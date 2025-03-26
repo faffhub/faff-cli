@@ -23,7 +23,7 @@ def calculate_file_hash(file_path: Path) -> str:
     return hash_sha256.hexdigest()
 
 
-def start_timeline_entry(root: Path, activity_id: str) -> str:
+def start_timeline_entry(root: Path, activity_id: str, note: str, valid_plans: List[Plan]) -> str:
     """
     Start a timeline entry for the given activity, stopping any previous one.
     """
@@ -31,6 +31,12 @@ def start_timeline_entry(root: Path, activity_id: str) -> str:
     logs_dir = root / ".faff" / "logs"
     log_file = logs_dir / f"{target_date.to_date_string()}.toml"
     now = pendulum.now()
+
+    activities = {activity.id: activity for plan in valid_plans for activity in plan.activities}
+    if activity_id not in activities:
+        return f"Activity {activity_id} not found in today's plan."
+
+    activity = activities[activity_id]
 
     if log_file.exists():
         with open(log_file, "r") as f:
@@ -48,8 +54,9 @@ def start_timeline_entry(root: Path, activity_id: str) -> str:
     log_data["entries"].append({
         "type": "timeline",
         "activity": activity_id,
+        "activity_name": activity.name,
         "start": now.to_iso8601_string(),
-        "notes": ""
+        "notes": note
     })
 
     # Save the log file
@@ -241,7 +248,8 @@ def validate_log(log_data: dict, valid_plans: List[Plan]) -> List[str]:
             errors.append(f"Unknown activity ID: {activity_id}")
         
         # Check if time_spent is valid
-        if entry["time_spent"] and not TIME_FORMAT_REGEX.match(entry["time_spent"]):
-            errors.append(f"Invalid time format for activity {activity_id}: {entry['time_spent']}")
+        # FIXME: there isn't always a time_spent field
+        # if entry["time_spent"] and not TIME_FORMAT_REGEX.match(entry["time_spent"]):
+        #     errors.append(f"Invalid time format for activity {activity_id}: {entry['time_spent']}")
         
     return errors

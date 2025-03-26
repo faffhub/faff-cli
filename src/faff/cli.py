@@ -58,12 +58,17 @@ def edit():
 
 
 @log_app.command()
-def start(activity_id: str):
+def start(activity_id: str, note: str = typer.Argument(None)):
     """
     Add an entry to the day's Private Log.
     """
-    typer.echo("Add an entry to the day's Private Log.")
-    typer.echo(core.start_timeline_entry(Context().require_faff_root(), activity_id))
+    typer.echo("Add an entry to the day's Log.")
+    valid_plans = core.load_valid_plans_for_day(Context().require_faff_root(),
+                                               core.today())
+    typer.echo(core.start_timeline_entry(Context().require_faff_root(),
+                                         activity_id,
+                                         note,
+                                         valid_plans))
 
 
 @log_app.command()
