@@ -1,0 +1,12 @@
+LICENSE
+README.md
+pyproject.toml
+src/faff/__init__.py
+src/faff/cli.py
+src/faff/core.py
+src/faff.egg-info/PKG-INFO
+src/faff.egg-info/SOURCES.txt
+src/faff.egg-info/dependency_links.txt
+src/faff.egg-info/entry_points.txt
+src/faff.egg-info/requires.txt
+src/faff.egg-info/top_level.txt

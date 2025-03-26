@@ -1,0 +1,25 @@
+# pyproject.toml (modern Python packaging using Poetry-style setup)
+[project]
+name = "faff"
+version = "0.1.0"
+description = "A local-first time tracking CLI with decentralized protocol aspirations."
+authors = [{name="Thomas Lant", email="thomas@lant.uk"}]
+license = "AGPL-3.0-or-later"
+dependencies = [
+    "typer[all]",
+    "rich",
+    "tomli; python_version<'3.11'"
+]
+
+[project.scripts]
+faff = "faff.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
