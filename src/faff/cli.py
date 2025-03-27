@@ -2,52 +2,68 @@ import typer
 from faff import core
 from faff.context import Context
 
-app = typer.Typer()
+cli = typer.Typer()
 
-@app.command()
-def status():
-    """
-    Show the status of the faff repository.
-    """
-    context = Context()
-    typer.echo(f"Working directory: {context.working_dir}")
-    typer.echo(f"Root directory: {context.find_faff_root()}")
+cli_log = typer.Typer(help="Edit or append to the log")
+cli_plan = typer.Typer(help="Configure, pull, and view plan(s)")
+cli_report = typer.Typer(help="Generate, sign, and push reports(s)")
 
-    todays_plans = core.load_valid_plans_for_day(context.find_faff_root(), core.today())
-    typer.echo(f"There are {len(todays_plans)} valid plans for today.")
-    for plan in todays_plans:
-        typer.echo(f"- {plan.source} (valid from {plan.valid_from})")
+cli.add_typer(cli_log, name="log")
+cli.add_typer(cli_plan, name="plan")
+cli.add_typer(cli_report, name="report")
 
+"""
+Design considerations:
+- These methods should not expect _text_ to be returned from the context methods.
+- Expected usage:
+    faff init
+    faff status
+    faff plan add remote
+    faff plan pull
+    faff plan list
+    faff log edit
+    faff log edit <date>
+    faff log start <UUID> "Notes"
+    faff log stop
+    faff report list
+    faff report compile <audience>
+    faff report sign <id>
+    faff report push <id>
+"""
 
-@app.command()
-def init():
+@cli.callback()
+def main(ctx: typer.Context):
+    ctx.obj = Context()
+
+@cli.command()
+def init(ctx: typer.Context):
     """
-    Initialise faff repository.
+    Initialise faff obj.
     """
-    context = Context()
+    context = ctx.obj
 
     typer.echo("Initialising faff repository.")
     context.initialise_repo()
     faff_root = context.require_faff_root()
     typer.echo(f"Initialised faff repository at {faff_root}.")
 
-
-log_app = typer.Typer(help="Log stuff")
-app.add_typer(log_app, name="log")
-
-
-@log_app.command()
-def new():
+@cli.command()
+def status(ctx: typer.Context):
     """
-    Initialise the day's Private Log.
+    Show the status of the faff repository.
     """
-    typer.echo("Initialising the day's Private Log.")
+    context = ctx.obj
+    typer.echo(f"Faff root: {context.find_faff_root()}")
 
+    todays_plans = core.load_valid_plans_for_day(context.find_faff_root(), core.today())
+    typer.echo(f"There are {len(todays_plans)} valid plans for today:")
+    for plan in todays_plans:
+        typer.echo(f"- {plan.source} (valid from {plan.valid_from})")
 
-@log_app.command()
-def edit():
+@cli_log.command()
+def edit(ctx: typer.Context):
     """Log your activities for the day by opening a file in your preferred editor."""
-    context = Context()
+    context = ctx.obj
 
     todays_plans = core.load_valid_plans_for_day(context.find_faff_root(), core.today())
     
@@ -57,43 +73,39 @@ def edit():
                                typer.echo)    
 
 
-@log_app.command()
-def start(activity_id: str, note: str = typer.Argument(None)):
+@cli_log.command()
+def start(ctx: typer.Context, activity_id: str, note: str = typer.Argument(None)):
     """
     Add an entry to the day's Private Log.
     """
-    typer.echo("Add an entry to the day's Log.")
-    valid_plans = core.load_valid_plans_for_day(Context().require_faff_root(),
+    context = ctx.obj
+    valid_plans = core.load_valid_plans_for_day(context.require_faff_root(),
                                                core.today())
-    typer.echo(core.start_timeline_entry(Context().require_faff_root(),
+    typer.echo(core.start_timeline_entry(context.require_faff_root(),
                                          activity_id,
                                          note,
                                          valid_plans))
 
-
-@log_app.command()
-def stop():
+@cli_log.command()
+def stop(ctx: typer.Context):
     """
     Stop the current timeline entry.
     """
-    typer.echo(core.stop_timeline_entry(Context().require_faff_root()))
+    context = ctx.obj
+    typer.echo(core.stop_timeline_entry(context.require_faff_root()))
 
-
-plan_app = typer.Typer(help="Plan stuff")
-app.add_typer(plan_app, name="plan")
-
-
-@plan_app.command()
-def show():
+@cli_plan.command()
+def list(ctx: typer.Context):
     """
     Show the planned activities for today
     """
-    context = Context()
+    context = ctx.obj
     todays_plans = core.load_valid_plans_for_day(context.find_faff_root(), core.today())
     for plan in todays_plans:
         typer.echo(f"Plan: {plan.source} (valid from {plan.valid_from})")
         for activity in plan.activities:
             typer.echo(f"- {activity.id}: {activity.name}")
 
+
 if __name__ == "__main__":
-    app()
+    cli()
