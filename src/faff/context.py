@@ -9,6 +9,7 @@ class Context:
         '.faff': {
             'config.toml': None,
             'plans': {},
+            'plugins': {},
             'logs': {},
             'timesheets': {},
         }

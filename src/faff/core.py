@@ -1,3 +1,4 @@
+import importlib
 import pendulum
 import re
 import os
@@ -5,11 +6,13 @@ import toml
 import subprocess
 
 from pathlib import Path
-from typing import List, Callable, Optional
-from tomlkit import document, table, comment, array
+from typing import List, Dict, Type, Any, Callable, Optional
+from tomlkit import document, table, comment
+from abc import ABC, abstractmethod
 
 from faff.models import Plan, Log, Activity, TimelineEntry, SummaryEntry
 from faff.context import Context
+
 
 TIME_FORMAT_REGEX = re.compile(r"^\d+h(\d+m)?$|^\d+m$")
 
@@ -337,3 +340,57 @@ def log_is_valid(context: Context, target_date: pendulum.Date) -> List[str]:
         return True
     except:
         return False
+
+
+def load_plugins(context: Context) -> Dict[str, Type]:
+    plugins_dir = context.require_faff_root() / ".faff" / "plugins"
+    plugins = {}
+
+    if not plugins_dir.exists():
+        plugins_dir.mkdir(parents=True, exist_ok=True)
+
+    for plugin_file in plugins_dir.glob("*.py"):
+        if plugin_file.name == "__init__.py":
+            continue
+
+        module_name = f"plugins.{plugin_file.stem}"
+        spec = importlib.util.spec_from_file_location(module_name, plugin_file)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        for attr_name in dir(module):
+            attr = getattr(module, attr_name)
+            if isinstance(attr, type) and (
+                issubclass(attr, PullConnector) or issubclass(attr, PushConnector)
+            ) and attr not in (PullConnector, PushConnector):
+                plugins[plugin_file.stem] = attr  # Store the class
+
+    return plugins  
+
+class PullConnector(ABC):
+    @abstractmethod
+    def pull_plan(self, start: pendulum.Date, end: pendulum.Date, 
+                  config: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """
+        Fetches activities for a given day.
+
+        Args:
+            config (Dict[str, Any]): Configuration specific to the source.
+
+        Returns:
+            List[Dict[str, Any]]: List of activities formatted for Faff.
+        """
+        pass
+
+
+class PushConnector(ABC):
+    @abstractmethod
+    def push_timesheet(self, config: Dict[str, Any], timesheet: Dict[str, Any]) -> None:
+        """
+        Pushes a compiled timesheet to a remote repository.
+
+        Args:
+            config (Dict[str, Any]): Configuration specific to the destination.
+            timesheet (Dict[str, Any]): The compiled timesheet to push.
+        """
+        pass

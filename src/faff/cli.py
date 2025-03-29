@@ -64,12 +64,30 @@ def status(ctx: typer.Context):
     Show the status of the faff repository.
     """
     context = ctx.obj
-    typer.echo(f"Faff root: {context.find_faff_root()}")
+    typer.echo(f"Status for faff repo root at: {context.find_faff_root()}")
 
     todays_plans = core.load_valid_plans_for_day(context, core.today())
-    typer.echo(f"There are {len(todays_plans)} valid plans for today:")
+    if len(todays_plans) == 1:
+        typer.echo(f"There is 1 valid plan for today:")
+    else:
+        typer.echo(f"There are {len(todays_plans)} valid plans for today:")
+
     for plan in todays_plans:
         typer.echo(f"- {plan.source} (valid from {plan.valid_from})")
+
+    plugins = core.load_plugins(context)
+    if len(plugins) == 1:
+        typer.echo(f"There is 1 connector plugin installed:")
+    else:
+        typer.echo(f"There are {len(plugins)} connector plugins installed:")
+
+    for plugin_name, plugin in plugins.items():
+        types = []
+        if issubclass(plugin, core.PullConnector):
+            types.append("pull")
+        if issubclass(plugin, core.PushConnector):
+            types.append("push")
+        typer.echo(f"- {plugin_name} ({', '.join(types)})")
 
     active_timeline_event = core.get_active_timeline_entry(context)
     if active_timeline_event:
@@ -80,6 +98,7 @@ def status(ctx: typer.Context):
             typer.echo(f"Working on {active_timeline_event.activity.name} for {duration.in_words()}")
     else:
         typer.echo("Not currently working on anything.")
+
 
 @cli_log.command()
 def edit(ctx: typer.Context):
