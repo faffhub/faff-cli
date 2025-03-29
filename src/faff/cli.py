@@ -49,6 +49,11 @@ def init(ctx: typer.Context):
     typer.echo(f"Initialised faff repository at {faff_root}.")
 
 @cli.command()
+def config(ctx: typer.Context):
+    context = ctx.obj
+    typer.echo(core.edit_config(context))
+
+@cli.command()
 def test(ctx: typer.Context):
     context = ctx.obj
     typer.echo(core.get_log_by_date(context, pendulum.today())) 

@@ -291,6 +291,24 @@ def load_valid_plans_for_day(context: Context,
 
     return valid_plans.values()
 
+def edit_config(context: Context):
+    config_file = context.require_faff_root() / ".faff" / "config.toml"
+    editor = os.getenv("EDITOR", "vim")  # Default to vim if $EDITOR is not set
+
+    pre_edit_hash = config_file.read_text().__hash__()
+    # Open the file in the editor
+    try:
+        subprocess.run([editor, str(config_file)], check=True)
+    except FileNotFoundError:
+        return
+
+    post_edit_hash = config_file.read_text().__hash__()
+
+    if pre_edit_hash == post_edit_hash:
+        return "No changes detected."
+    else:
+        return "Config updated."
+
 def edit_log(context: Context, target_date: pendulum.Date):
     log_file = get_log_file_path_by_date(context, target_date)
     pre_edit_hash = log_file.read_text().__hash__()
