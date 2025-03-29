@@ -1,4 +1,5 @@
 import os
+import pendulum
 from pathlib import Path
 
 class Context:
@@ -16,20 +17,23 @@ class Context:
     def __init__(self, working_dir: Path | None = None):
         self.working_dir = working_dir or Path.cwd()
 
+    def get_timezone(self) -> pendulum.Timezone:
+        return pendulum.now().timezone # this should be configurable
+
+    def today(self) -> pendulum.Date:
+        #FIXME: Why is this funciton in context and core?
+        return pendulum.today().date()
+
     def require_faff_root(self) -> Path:
         """
         Search upwards from a given path for a `.faff` directory.
-
         Args:
             start_path (Path): The path to start searching from.
-
         Returns:
             Path: The path to the directory containing `.faff`.
-
         Raises:
             FileNotFoundError: If no `.faff` directory is found in the path hierarchy.
         """
-
         path = self.find_faff_root()
         if path is None:
             raise FileNotFoundError(
@@ -39,10 +43,8 @@ class Context:
     def find_faff_root(self) -> Path | None:
         """
         Search upwards from a given path for a `.faff` directory.
-
         Args:
             start_path (Path): The path to start searching from.
-
         Returns:
             Path | None: The path to the directory containing `.faff`, or None if not found.
         """

@@ -1,4 +1,5 @@
 import typer
+import pendulum
 from faff import core
 from faff.context import Context
 
@@ -48,6 +49,11 @@ def init(ctx: typer.Context):
     typer.echo(f"Initialised faff repository at {faff_root}.")
 
 @cli.command()
+def test(ctx: typer.Context):
+    context = ctx.obj
+    typer.echo(core.get_log_by_date(context, pendulum.today())) 
+
+@cli.command()
 def status(ctx: typer.Context):
     """
     Show the status of the faff repository.
@@ -55,22 +61,26 @@ def status(ctx: typer.Context):
     context = ctx.obj
     typer.echo(f"Faff root: {context.find_faff_root()}")
 
-    todays_plans = core.load_valid_plans_for_day(context.find_faff_root(), core.today())
+    todays_plans = core.load_valid_plans_for_day(context, core.today())
     typer.echo(f"There are {len(todays_plans)} valid plans for today:")
     for plan in todays_plans:
         typer.echo(f"- {plan.source} (valid from {plan.valid_from})")
+
+    active_timeline_event = core.get_active_timeline_entry(context)
+    if active_timeline_event:
+        duration = pendulum.now() - active_timeline_event.start
+        if active_timeline_event.note:
+            typer.echo(f"Working on {active_timeline_event.activity.name} (\"{active_timeline_event.note}\") for {duration.in_words()}")
+        else:
+            typer.echo(f"Working on {active_timeline_event.activity.name} for {duration.in_words()}")
+    else:
+        typer.echo("Not currently working on anything.")
 
 @cli_log.command()
 def edit(ctx: typer.Context):
     """Log your activities for the day by opening a file in your preferred editor."""
     context = ctx.obj
-
-    todays_plans = core.load_valid_plans_for_day(context.find_faff_root(), core.today())
-    
-    core.log_end_of_day_editor(context.require_faff_root(),
-                               todays_plans,
-                               core.today(),
-                               typer.echo)    
+    typer.echo(core.edit_log(context, core.today()))
 
 
 @cli_log.command()
@@ -79,12 +89,12 @@ def start(ctx: typer.Context, activity_id: str, note: str = typer.Argument(None)
     Add an entry to the day's Private Log.
     """
     context = ctx.obj
-    valid_plans = core.load_valid_plans_for_day(context.require_faff_root(),
+    valid_plans = core.load_valid_plans_for_day(context,
                                                core.today())
-    typer.echo(core.start_timeline_entry(context.require_faff_root(),
+
+    typer.echo(core.start_timeline_entry(context,
                                          activity_id,
-                                         note,
-                                         valid_plans))
+                                         note))
 
 @cli_log.command()
 def stop(ctx: typer.Context):
@@ -92,7 +102,17 @@ def stop(ctx: typer.Context):
     Stop the current timeline entry.
     """
     context = ctx.obj
-    typer.echo(core.stop_timeline_entry(context.require_faff_root()))
+    typer.echo(core.stop_timeline_entry(context))
+
+@cli_log.command()
+def refresh(ctx: typer.Context):
+    """
+    Reformat the log file.
+    """
+    context = ctx.obj
+    log = core.get_log_by_date(context, core.today())
+    core.write_log(context, log)
+    typer.echo("Log refreshed.")
 
 @cli_plan.command()
 def list(ctx: typer.Context):
@@ -100,7 +120,7 @@ def list(ctx: typer.Context):
     Show the planned activities for today
     """
     context = ctx.obj
-    todays_plans = core.load_valid_plans_for_day(context.find_faff_root(), core.today())
+    todays_plans = core.load_valid_plans_for_day(context, core.today())
     for plan in todays_plans:
         typer.echo(f"Plan: {plan.source} (valid from {plan.valid_from})")
         for activity in plan.activities:

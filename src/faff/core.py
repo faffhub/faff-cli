@@ -3,91 +3,255 @@ import re
 import os
 import toml
 import subprocess
-import hashlib
 
 from pathlib import Path
-from typing import List, Callable
+from typing import List, Callable, Optional
+from tomlkit import document, table, comment, array
 
-from faff.models import Plan
+from faff.models import Plan, Log, Activity, TimelineEntry, SummaryEntry
+from faff.context import Context
 
 TIME_FORMAT_REGEX = re.compile(r"^\d+h(\d+m)?$|^\d+m$")
 
+def get_log_file_path_by_date(context: Context, target_date: pendulum.Date) -> Path:
+    logs_dir = context.require_faff_root() / ".faff" / "logs"
+    log_file = logs_dir / f"{target_date.to_date_string()}.toml"
+    return log_file
 
-def calculate_file_hash(file_path: Path) -> str:
-    """Calculate a SHA-256 hash of a file's content."""
-    hash_sha256 = hashlib.sha256()
-    if file_path.exists():
-        with file_path.open("rb") as f:
-            for chunk in iter(lambda: f.read(4096), b""):
-                hash_sha256.update(chunk)
-    return hash_sha256.hexdigest()
+def get_log_by_date(context: Context, target_date: pendulum.Date) -> Log:
+    now = pendulum.now()
+    log_file = get_log_file_path_by_date(context, target_date)
 
+    activities = valid_activities(context, target_date)
 
-def start_timeline_entry(root: Path, activity_id: str, note: str, valid_plans: List[Plan]) -> str:
+    if log_file.exists():
+        with open(log_file, "r") as f:
+            log = Log.from_toml(toml.load(f))
+            for timelineEntry in log.timeline:
+                if timelineEntry.activity.id in activities.keys():
+                    timelineEntry.activity = activities.get(timelineEntry.activity.id)                
+            return log
+    else:
+        return Log(target_date, context.get_timezone())
+
+def date_has_DST_event(context: Context, target_date: pendulum.Date) -> bool:
+    tz = context.get_timezone()  # Get the timezone from the context
+
+    # Convert the date to datetime at the start and end of the day
+    start_of_day = pendulum.datetime(target_date.year, target_date.month, target_date.day, 0, 0, tz=tz)
+    end_of_day = pendulum.datetime(target_date.year, target_date.month, target_date.day, 23, 59, tz=tz)
+
+    # Get DST offset at the start and end of the day
+    start_dst_offset = start_of_day.utcoffset().total_seconds()
+    end_dst_offset = end_of_day.utcoffset().total_seconds()
+
+    # If the offset changes during the day, there is a DST event
+    return start_dst_offset != end_dst_offset
+
+def get_datetime_format(context: Context, target_date: pendulum.Date) -> str:
+    if date_has_DST_event(context, target_date):
+        return "YYYY-MM-DDTHH:mmZ"
+    else:
+        return "YYYY-MM-DDTHH:mm"
+
+# Manually building the ISO8601 string
+def format_duration_as_iso8601(duration: pendulum.Duration) -> str:
+    parts = []
+    
+    if duration.years:
+        parts.append(f"{duration.years}Y")
+    if duration.months:
+        parts.append(f"{duration.months}M")
+    if duration.days:
+        parts.append(f"{duration.days}D")
+    
+    time_parts = []
+    if duration.hours:
+        time_parts.append(f"{duration.hours}H")
+    if duration.minutes:
+        time_parts.append(f"{duration.minutes}M")
+    if duration.remaining_seconds:
+        time_parts.append(f"{duration.remaining_seconds}S")
+    
+    if time_parts:
+        parts.append("T" + "".join(time_parts))
+    
+    return "P" + "".join(parts)
+
+def write_log(context: Context, log: Log):
+    log_file = get_log_file_path_by_date(context, log.date)
+    activities = valid_activities(context, log.date)
+
+    doc = document()
+    doc.add(comment("This is a Faff-format log file. See faffage.com for details."))
+    doc.add(comment("It has been generated but can be edited manually."))
+    doc.add(comment("Changes to rows starting with '#' will be ignored."))
+
+    # Add log data
+    doc["date"] = log.date.to_date_string()
+    doc["timezone"] = str(log.timezone)
+
+    if not date_has_DST_event(context, log.date):
+        doc["--date_format"] = "YYYY-MM-DDTHH:mm"
+    else:
+        doc["--date_format"] = "YYYY-MM-DDTHH:mmZ"
+
+    # Add summary entries
+    summary_array = []
+    for entry in log.summary:
+        activity = activities.get(entry.activity.id)
+        summary_entry = table()
+        summary_entry["activity"] = entry.activity.id
+        if activity.project:
+            summary_entry["--project"] = activity.project
+        if activity.name:
+            summary_entry["--name"] = activity.name
+        summary_entry["duration"] = entry.duration
+        if entry.note:
+            summary_entry["note"] = entry.note
+        summary_array.append(summary_entry)
+
+    if len(summary_array) > 0:
+        doc["summary"] = summary_array
+
+    # Add timeline entries
+    timeline_array = []
+    for entry in log.timeline:
+        activity = activities.get(entry.activity.id)
+        timeline_entry = table()
+        timeline_entry["activity"] = entry.activity.id
+        if activity.project:
+            timeline_entry["--project"] = activity.project
+        if activity.name:
+            timeline_entry["--name"] = activity.name
+        timeline_entry["start"] = entry.start.format(get_datetime_format(context, log.date))
+        if entry.end:
+            timeline_entry["end"] = entry.end.format(get_datetime_format(context, log.date))
+            interval = (entry.end - entry.start)
+            duration = pendulum.duration(seconds=interval.total_seconds())
+            timeline_entry["--duration"] = duration.in_words() #format_duration_as_iso8601(duration)
+        if entry.note:
+            timeline_entry["note"] = entry.note
+        timeline_array.append(timeline_entry)
+    doc["timeline"] = timeline_array
+
+    # Convert the TOML document to a string
+    toml_string = doc.as_string()
+
+    # Align the `=` signs
+    processed_toml = commentify_derived_values(align_equals(toml_string))
+
+    # Write the aligned TOML to the file
+    with open(log_file, "w") as f:
+        f.write(processed_toml)
+
+def commentify_derived_values(toml_string: str) -> str:
+    """
+    Replace lines starting with '--' followed by a valid TOML variable name
+    with a comment.
+
+    Args:
+        toml_string (str): The TOML string to process.
+
+    Returns:
+        str: The processed TOML string with matching lines replaced as comments.
+    """
+    # Regular expression to match lines like '--something = "some value"'
+    pattern = r"^--([a-zA-Z_][a-zA-Z0-9_]*\s*=\s*.+)$"
+
+    # Replace matching lines with comments
+    processed_toml = re.sub(pattern, r"# \1", toml_string, flags=re.MULTILINE)
+
+    return processed_toml
+
+def align_equals(toml_string: str) -> str:
+    """
+    Aligns the `=` signs in the TOML string for better readability.
+    """
+    lines = toml_string.splitlines()
+    max_key_length = 0
+
+    # Calculate the maximum key length for alignment
+    for line in lines:
+        if "=" in line and not line.strip().startswith("#"):
+            key = line.split("=")[0].strip()
+            max_key_length = max(max_key_length, len(key))
+
+    # Align the `=` signs
+    aligned_lines = []
+    for line in lines:
+        if "=" in line and not line.strip().startswith("#"):
+            key, value = line.split("=", 1)
+            key = key.strip()
+            value = value.strip()
+            padding = " " * (max_key_length - len(key))
+            aligned_lines.append(f"{key}{padding} = {value}")
+        else:
+            aligned_lines.append(line)
+
+    return "\n".join(aligned_lines)
+
+def valid_activities(context: Context, target_date: pendulum.Date) -> List[str]:
+    valid_plans = load_valid_plans_for_day(context, target_date)
+    activities = {activity.id: activity
+                  for plan in valid_plans
+                  for activity in plan.activities}
+    return activities
+
+def start_timeline_entry(context: Context,
+                         activity_id: str, note: str) -> str:
     """
     Start a timeline entry for the given activity, stopping any previous one.
     """
-    target_date = pendulum.today()
-    logs_dir = root / ".faff" / "logs"
-    log_file = logs_dir / f"{target_date.to_date_string()}.toml"
+    log = get_log_by_date(context, context.today())
     now = pendulum.now()
 
-    activities = {activity.id: activity for plan in valid_plans for activity in plan.activities}
+    activities = valid_activities(context, context.today())
+
     if activity_id not in activities:
         return f"Activity {activity_id} not found in today's plan."
 
     activity = activities[activity_id]
 
-    if log_file.exists():
-        with open(log_file, "r") as f:
-            log_data = toml.load(f)
-    else:
-        logs_dir.mkdir(parents=True, exist_ok=True)
-        log_data = {"date": target_date.to_date_string(), "entries": []}
-
     # Stop ongoing entries
-    for entry in log_data["entries"]:
-        if entry["type"] == "timeline" and "end" not in entry:
-            entry["end"] = now.to_iso8601_string()
-    
-    # Add new entry
-    log_data["entries"].append({
-        "type": "timeline",
-        "activity": activity_id,
-        "activity_name": activity.name,
-        "start": now.to_iso8601_string(),
-        "notes": note
-    })
+    for timelineEntry in log.timeline:
+        if not timelineEntry.end:
+            timelineEntry.end = now
 
-    # Save the log file
-    with open(log_file, "w") as f:
-        toml.dump(log_data, f)
+    log.timeline.append(TimelineEntry(activity=activity,
+                                      start=pendulum.now(),
+                                      note=note))
 
+    write_log(context, log)
     return f"Started logging for activity {activity_id} at {now.to_time_string()}."
 
-def stop_timeline_entry(root: Path) -> str:
+def get_active_timeline_entry(context: Context) -> Activity | None:
+    """
+    Report the most recent ongoing timeline entry, if there is one.
+    """
+    target_date = context.today()
+    log = get_log_by_date(context, target_date)
+
+    # Find the most recent ongoing timeline entry
+    for timelineEntry in reversed(log.timeline):
+        if not timelineEntry.end:
+            return timelineEntry
+
+
+def stop_timeline_entry(context: Context) -> str:
     """
     Stop the most recent ongoing timeline entry.
     """
-    target_date = pendulum.today()
-    logs_dir = root / ".faff" / "logs"
-    log_file = logs_dir / f"{target_date.to_date_string()}.toml"
+    target_date = context.today()
+    log = get_log_by_date(context, target_date)
     now = pendulum.now()
 
-    if not log_file.exists():
-        return "No log file found for today. Nothing to stop."
-
-    # Load the log file
-    with open(log_file, "r") as f:
-        log_data = toml.load(f)
-
     # Find the most recent ongoing timeline entry
-    for entry in reversed(log_data["entries"]):
-        if entry["type"] == "timeline" and "end" not in entry:
-            entry["end"] = now.to_iso8601_string()
-            with open(log_file, "w") as f:
-                toml.dump(log_data, f)
-            return f"Stopped logging for activity {entry['activity']} at {now.to_time_string()}."
+    for timelineEntry in reversed(log.timeline):
+        if not timelineEntry.end:
+            timelineEntry.end = now
+            write_log(context, log)
+            return f"Stopped logging for activity {timelineEntry.activity.name} at {now.to_time_string()}."
 
     return "No ongoing timeline entries found to stop."
 
@@ -95,7 +259,8 @@ def stop_timeline_entry(root: Path) -> str:
 def today():
     return pendulum.today().date()
 
-def load_valid_plans_for_day(root: Path, target_date: pendulum.Date) -> List[Plan]:
+def load_valid_plans_for_day(context: Context,
+                             target_date: pendulum.Date) -> List[Plan]:
     """
     Loads all plans from the `.faff/plans` directory under the given root,
     and returns those valid on the target date.
@@ -104,7 +269,7 @@ def load_valid_plans_for_day(root: Path, target_date: pendulum.Date) -> List[Pla
     - valid_from <= target_date
     - and (valid_until >= target_date or valid_until is None)
     """
-    plans_dir = root / ".faff" / "plans"
+    plans_dir = context.require_faff_root() / ".faff" / "plans"
     valid_plans = {}
     for file in plans_dir.glob("*.toml"):
         try:
@@ -126,130 +291,31 @@ def load_valid_plans_for_day(root: Path, target_date: pendulum.Date) -> List[Pla
 
     return valid_plans.values()
 
+def edit_log(context: Context, target_date: pendulum.Date):
+    log_file = get_log_file_path_by_date(context, target_date)
+    pre_edit_hash = log_file.read_text().__hash__()
 
-def log_end_of_day_editor(root: Path,
-                          valid_plans: List[Plan],
-                          target_date: pendulum.Date,
-                          reporter: Callable[[str], None] = print):
-    """
-    Prepare a log file for the day and open it in the user's preferred editor.
-    """
-    logs_dir = root / ".faff" / "logs"
-    log_file = logs_dir / f"{target_date.to_date_string()}.toml"
-    
-    # Create log file if it doesn't exist
-    if not log_file.exists():
-        log_data = {"date": target_date.to_date_string(),
-                    "timezone": pendulum.now().timezone.name, # FIXME: This should be driven by config that defaults to the system timezone
-                    "entries": []}
-        
-        activities = {activity.id: activity for plan in valid_plans for activity in plan.activities}
-        
-        if not activities:
-            reporter("No valid activities found for today. Aborting.")
-            return
-    # Create log file if it doesn't exist
-    if not log_file.exists():
-        log_data = {"date": target_date.to_date_string(), "entries": []}
-        
-        activities = {activity.id: activity for plan in valid_plans for activity in plan.activities}
-        
-        if not activities:
-            reporter("No valid activities found for today. Aborting.")
-            return
-        
-        # Prepare file content with comments
-        lines = [
-            "# Fill in the time spent on each activity, e.g., '1h', '30m', '2h15m'",
-            "# You can also leave notes if needed.",
-            f"# Log for {target_date.to_date_string()}\n",
-            "date = \"{}\"\n".format(target_date.to_date_string())
-        ]
-
-        for activity_id, activity in activities.items():
-            lines.append(f"\n# Activity: {activity.name}")
-            if activity.metadata:
-                for key, value in activity.metadata.items():
-                    lines.append(f"# {key}: {value}")
-            
-            # Prepopulate with placeholder entry
-            lines.append(f"[[entries]]")
-            lines.append(f"activity = \"{activity_id}\"")
-            lines.append(f"type = \"summary\"")
-            lines.append("time_spent = \"\"")
-            lines.append("notes = \"\"")
-        
-        # Write to the file
-        with open(log_file, "w") as f:
-            f.write("\n".join(lines))
-
-    original_hash = calculate_file_hash(log_file)
-
-    # Detect the user's preferred editor
     editor = os.getenv("EDITOR", "vim")  # Default to vim if $EDITOR is not set
 
     # Open the file in the editor
     try:
         subprocess.run([editor, str(log_file)], check=True)
     except FileNotFoundError:
-        reporter(f"Could not open the editor {editor}. Please make sure it is installed.")
         return
 
-    updated_hash = calculate_file_hash(log_file)
+    post_edit_hash = log_file.read_text().__hash__()
 
-    if original_hash == updated_hash:
-        reporter("No changes were made. The log file has not been modified.")
-        return
-
-    # Now, let's read back the file and validate it
-    with open(log_file, "r") as f:
-        try:
-            log_data = toml.load(f)
-        except toml.TomlDecodeError as e:
-            reporter(f"Failed to parse the log file. Error: {str(e)}")
-            return
-
-    validation_errors = validate_log(log_data, valid_plans)
-    if validation_errors:
-        for error in validation_errors:
-            reporter(f"Error: {error}")
-        reporter("Please fix the above errors and try again.")
+    if pre_edit_hash == post_edit_hash:
+        return "No changes detected."
     else:
-        reporter(f"Log saved successfully to {log_file}")
+        log = get_log_by_date(context, target_date)
+        write_log(context, log)
+        return "Log updated."
 
-
-def validate_log(log_data: dict, valid_plans: List[Plan]) -> List[str]:
+def log_is_valid(context: Context, target_date: pendulum.Date) -> List[str]:
     """Check the log data for errors and inconsistencies."""
-    errors = []
-    valid_activity_ids = {activity.id for plan in valid_plans for activity in plan.activities}
-    
-    # Check date field
-    if "date" not in log_data:
-        errors.append("Missing 'date' field in the log file.")
-    else:
-        try:
-            pendulum.parse(log_data["date"]).date()
-        except ValueError:
-            errors.append(f"Invalid date format: {log_data['date']}")
-    
-    # Check entries
-    if "entries" not in log_data or not isinstance(log_data["entries"], list):
-        errors.append("Missing or malformed 'entries' section.")
-        return errors
-    
-    for entry in log_data["entries"]:
-        if "activity" not in entry:
-            errors.append("An entry is missing the 'activity' field.")
-            continue
-        
-        activity_id = entry["activity"]
-        
-        if activity_id not in valid_activity_ids:
-            errors.append(f"Unknown activity ID: {activity_id}")
-        
-        # Check if time_spent is valid
-        # FIXME: there isn't always a time_spent field
-        # if entry["time_spent"] and not TIME_FORMAT_REGEX.match(entry["time_spent"]):
-        #     errors.append(f"Invalid time format for activity {activity_id}: {entry['time_spent']}")
-        
-    return errors
+    try:
+        log = get_log_by_date(context, target_date)
+        return True
+    except:
+        return False
