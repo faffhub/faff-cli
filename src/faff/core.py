@@ -3,6 +3,7 @@ import pendulum
 import re
 import os
 import toml
+import tomllib
 import subprocess
 
 from pathlib import Path
@@ -12,7 +13,6 @@ from abc import ABC, abstractmethod
 
 from faff.models import Plan, Log, Activity, TimelineEntry, SummaryEntry
 from faff.context import Context
-
 
 TIME_FORMAT_REGEX = re.compile(r"^\d+h(\d+m)?$|^\d+m$")
 
@@ -35,10 +35,10 @@ def get_log_by_date(context: Context, target_date: pendulum.Date) -> Log:
                     timelineEntry.activity = activities.get(timelineEntry.activity.id)                
             return log
     else:
-        return Log(target_date, context.get_timezone())
+        return Log(target_date, context.config.timezone)
 
 def date_has_DST_event(context: Context, target_date: pendulum.Date) -> bool:
-    tz = context.get_timezone()  # Get the timezone from the context
+    tz = context.config.timezone  # Get the timezone from the context
 
     # Convert the date to datetime at the start and end of the day
     start_of_day = pendulum.datetime(target_date.year, target_date.month, target_date.day, 0, 0, tz=tz)
@@ -56,30 +56,6 @@ def get_datetime_format(context: Context, target_date: pendulum.Date) -> str:
         return "YYYY-MM-DDTHH:mmZ"
     else:
         return "YYYY-MM-DDTHH:mm"
-
-# Manually building the ISO8601 string
-def format_duration_as_iso8601(duration: pendulum.Duration) -> str:
-    parts = []
-    
-    if duration.years:
-        parts.append(f"{duration.years}Y")
-    if duration.months:
-        parts.append(f"{duration.months}M")
-    if duration.days:
-        parts.append(f"{duration.days}D")
-    
-    time_parts = []
-    if duration.hours:
-        time_parts.append(f"{duration.hours}H")
-    if duration.minutes:
-        time_parts.append(f"{duration.minutes}M")
-    if duration.remaining_seconds:
-        time_parts.append(f"{duration.remaining_seconds}S")
-    
-    if time_parts:
-        parts.append("T" + "".join(time_parts))
-    
-    return "P" + "".join(parts)
 
 def write_log(context: Context, log: Log):
     log_file = get_log_file_path_by_date(context, log.date)
@@ -276,7 +252,10 @@ def load_valid_plans_for_day(context: Context,
     valid_plans = {}
     for file in plans_dir.glob("*.toml"):
         try:
-            plan = Plan.from_toml_file(file)
+            with file.open("rb") as f:
+                data = tomllib.load(f)
+                plan = Plan.from_dict(data)
+
         except Exception as e:
             # Optionally log/print or raise depending on how strict you want to be
             continue
