@@ -187,32 +187,10 @@ def start_timeline_entry(context: Context,
         return f"Activity {activity_id} not found in today's plan."
 
     activity = activities[activity_id]
-
-    # Stop ongoing entries
-    for timelineEntry in log.timeline:
-        if not timelineEntry.end:
-            timelineEntry.end = now
-
-    log.timeline.append(TimelineEntry(activity=activity,
-                                      start=pendulum.now(),
-                                      note=note))
+    log = log.start_timeline_entry(activity, now, note)
 
     write_log(context, log)
     return f"Started logging for activity {activity_id} at {now.to_time_string()}."
-
-def get_active_timeline_entry(context: Context) -> Activity | None:
-    """
-    Report the most recent ongoing timeline entry, if there is one.
-    """
-    target_date = context.today()
-    log = get_log_by_date(context, target_date)
-    return log.active_timeline_entry()
-
-    # Find the most recent ongoing timeline entry
-    for timelineEntry in reversed(log.timeline):
-        if not timelineEntry.end:
-            return timelineEntry
-
 
 def stop_timeline_entry(context: Context) -> str:
     """

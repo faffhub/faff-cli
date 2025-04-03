@@ -87,13 +87,15 @@ def status(ctx: typer.Context):
             types.append("push")
         typer.echo(f"- {plugin_name} ({', '.join(types)})")
 
-    active_timeline_event = core.get_active_timeline_entry(context)
-    if active_timeline_event:
-        duration = context.now() - active_timeline_event.start
-        if active_timeline_event.note:
-            typer.echo(f"Working on {active_timeline_event.activity.name} (\"{active_timeline_event.note}\") for {duration.in_words()}")
+    log = core.get_log_by_date(context, context.today())
+    active_timeline_entry = log.active_timeline_entry()
+
+    if active_timeline_entry:
+        duration = context.now() - active_timeline_entry.start
+        if active_timeline_entry.note:
+            typer.echo(f"Working on {active_timeline_entry.activity.name} (\"{active_timeline_entry.note}\") for {duration.in_words()}")
         else:
-            typer.echo(f"Working on {active_timeline_event.activity.name} for {duration.in_words()}")
+            typer.echo(f"Working on {active_timeline_entry.activity.name} for {duration.in_words()}")
     else:
         typer.echo("Not currently working on anything.")
 
@@ -143,8 +145,8 @@ def refresh(ctx: typer.Context, date: str = typer.Argument(None)):
     core.write_log(context, log)
     typer.echo("Log refreshed.")
 
-@cli_plan.command()
-def list(ctx: typer.Context, date: str = typer.Argument(None)):
+@cli_plan.command(name="list") # To avoid conflict with list type
+def list_plans(ctx: typer.Context, date: str = typer.Argument(None)):
     """
     Show the planned activities for a given day, defaulting to today
     """
@@ -164,9 +166,34 @@ def pull(ctx: typer.Context, date: str = typer.Argument(None)):
     """
     context = ctx.obj
     plugins = core.load_plugins(context)
-    plugins.get('jira')().pull_plan(
+    jira = plugins.get('jira')().pull_plan(
         get_date(context, date),
         get_date(context, date), {})
+
+    # write the plan to the plan folder:
+    import toml
+    import dataclasses
+
+    def serialize_value(value):
+        if isinstance(value, (pendulum.DateTime, pendulum.Date)):
+            return value.to_date_string()  # or .to_iso8601_string() if datetime
+        elif isinstance(value, dict):
+            return {k: serialize_value(v) for k, v in value.items()}
+        elif isinstance(value, list):
+            return [serialize_value(v) for v in value]
+        else:
+            return value
+
+    def serialize_dataclass(obj):
+        return {k: serialize_value(v) for k, v in dataclasses.asdict(obj).items()}
+
+    data = serialize_dataclass(jira)
+
+    path = context.require_faff_root() / ".faff" / "plans" / f"remote.{jira.source}.{jira.valid_from.format('YYYYMMDD')}.toml"
+    with path.open("w") as f:
+        toml.dump(data, f)    
+
+    typer.echo(f"Pulled plan from {jira.source} and saved to {path}")
 
 
 if __name__ == "__main__":

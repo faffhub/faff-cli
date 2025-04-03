@@ -117,12 +117,17 @@ class Log:
     
     def start_timeline_entry(self, activity: Activity, start: pendulum.DateTime,
                                 note: Optional[str] = None) -> Log:
-        return Log(
-            date=self.date,
-            timezone=self.timezone,
-            summary=self.summary,
-            timeline=self.timeline + [TimelineEntry(activity, start, note)]
-        )
+        
+        if self.active_timeline_entry():
+            stopped_log = self.stop_active_timeline_entry(start)
+            return stopped_log.start_timeline_entry(activity, start, note)
+        else:
+            return Log(
+                date=self.date,
+                timezone=self.timezone,
+                summary=self.summary,
+                timeline=self.timeline + [TimelineEntry(activity, start, note)]
+            )
     
     def active_timeline_entry(self) -> Optional[TimelineEntry]:
         if not self.timeline:
