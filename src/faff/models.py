@@ -2,15 +2,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
+
 import pendulum
 
 """
-FIXME: Everything in here should just be models - not utility functions for formatting or
-reading/writing to disk.
+This module defines the data models.
+These models should have methods to hydrate themselves from dicts, and to serialize themselves to dicts.
+At this stage, I see no reason why the model objects shouldn't be immutable, so to begin with 
+they will be. Methods to stop and start activities will return new objects with the updated state.
 """
 
-@dataclass
+@dataclass(frozen=True)
 class Activity:
     """An activity you can log time against."""
     id: str  # Globally unique identifier, e.g., "project:feature" or UUID
@@ -18,7 +21,16 @@ class Activity:
     project: Optional[str] = None
     meta: Dict[str, str] = field(default_factory=dict)  # Optional extra info
 
-@dataclass
+    @classmethod
+    def from_dict(cls, data: dict) -> Activity:
+        return cls(
+            id=data.get("id"),
+            name=data.get("name"),
+            project=data.get("project"),
+            meta=data.get("meta", {})
+        )
+
+@dataclass(frozen=True)
 class Plan:
     """A collection of activities valid for a period of time."""
     source: str  # e.g. 'local', 'https://example.com/plan'
@@ -26,20 +38,15 @@ class Plan:
     valid_until: Optional[pendulum.Date] = None
     activities: List[Activity] = field(default_factory=list)
 
-    @staticmethod
-    def from_toml_file(path: Path) -> Plan:
-        import tomllib
-        with path.open("rb") as f:
-            data = tomllib.load(f)
-
-        activities = [Activity(**a) for a in data["activities"]]
-        return Plan(
+    @classmethod
+    def from_dict(cls, data: dict) -> Plan:
+        activities = [Activity.from_dict(a) for a in data.get("activities", [])]
+        return cls(
             source=data["source"],
             valid_from=pendulum.parse(data["valid_from"]).date(),
             valid_until=pendulum.parse(data["valid_until"]).date() if "valid_until" in data else None,
             activities=activities
         )
-
 
 @dataclass
 class Log:
@@ -56,7 +63,6 @@ class Log:
         summary = [SummaryEntry.from_toml(e) for e in toml_data.get("summary", [])]
         timeline = [TimelineEntry.from_toml(e) for e in toml_data.get("timeline", [])]
         return Log(date, timezone, summary, timeline)
-
 
 @dataclass
 class TimelineEntry:
@@ -84,7 +90,6 @@ class TimelineEntry:
             note=self.note,
             meta=self.meta
         )
-    
 
 @dataclass
 class SummaryEntry:
@@ -99,3 +104,20 @@ class SummaryEntry:
                             name = toml_data.get("name"),
                             meta = toml_data.get("meta", {}))
         return SummaryEntry(activity, toml_data["duration"], toml_data.get("note"))
+    
+@dataclass
+class Config:
+    """Configuration for the faff CLI. This object includes the default values for the CLI."""
+    timezone: pendulum.Timezone = pendulum.now().timezone
+    plan_sources: List[Dict[str, Any]] = field(default_factory=list)
+    push_targets: List[Dict[str, Any]] = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> Config:
+        if "timezone" in data:
+            timezone = pendulum.timezone(data.get("timezone"))
+        else:
+            timezone = pendulum.now().timezone
+        plan_sources = data.get("plan_source", [])
+        push_targets = data.get("push_target", [])
+        return cls(timezone, plan_sources, push_targets)

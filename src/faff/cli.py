@@ -50,13 +50,11 @@ def init(ctx: typer.Context):
 
 @cli.command()
 def config(ctx: typer.Context):
+    """
+    Edit the faff configuration in your preferred editor.
+    """
     context = ctx.obj
     typer.echo(core.edit_config(context))
-
-@cli.command()
-def test(ctx: typer.Context):
-    context = ctx.obj
-    typer.echo(core.get_log_by_date(context, pendulum.today())) 
 
 @cli.command()
 def status(ctx: typer.Context):
@@ -149,6 +147,15 @@ def list(ctx: typer.Context):
         typer.echo(f"Plan: {plan.source} (valid from {plan.valid_from})")
         for activity in plan.activities:
             typer.echo(f"- {activity.id}: {activity.name}")
+
+@cli_plan.command()
+def pull(ctx: typer.Context):
+    """
+    Pull planned activities from all sources.
+    """
+    context = ctx.obj
+    plugins = core.load_plugins(context)
+    plugins.get('jira')().pull_plan(pendulum.today(), pendulum.today(), {})
 
 
 if __name__ == "__main__":

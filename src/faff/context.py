@@ -1,6 +1,10 @@
 import os
+import tomllib
 import pendulum
+
 from pathlib import Path
+
+from faff.models import Config
 
 class Context:
 
@@ -18,8 +22,11 @@ class Context:
     def __init__(self, working_dir: Path | None = None):
         self.working_dir = working_dir or Path.cwd()
 
-    def get_timezone(self) -> pendulum.Timezone:
-        return pendulum.now().timezone # this should be configurable
+        config_path = self.require_faff_root() / ".faff" / "config.toml"
+
+        with config_path.open("rb") as f:
+            toml_data = tomllib.load(f)
+            self.config = Config.from_dict(toml_data)
 
     def today(self) -> pendulum.Date:
         #FIXME: Why is this funciton in context and core?
@@ -77,7 +84,6 @@ class Context:
                 f"Directory {already_initialised} already contains a {self.ROOT_NAME} directory.")  # noqa
 
         self.create_directory_structure(self.VALID_DIRECTORY_STRUCTURE, self.working_dir)
-
 
     def create_directory_structure(self, directory_structure: dict,
                                    base_path : Path | None) -> None:
