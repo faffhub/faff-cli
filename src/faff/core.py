@@ -29,11 +29,7 @@ def get_log_by_date(context: Context, target_date: pendulum.Date) -> Log:
 
     if log_file.exists():
         with open(log_file, "r") as f:
-            log = Log.from_dict(toml.load(f))
-            for timelineEntry in log.timeline:
-                if timelineEntry.activity.id in activities.keys():
-                    timelineEntry.activity = activities.get(timelineEntry.activity.id)                
-            return log
+            return Log.from_dict(toml.load(f), activities)
     else:
         return Log(target_date, context.config.timezone)
 
@@ -210,6 +206,7 @@ def get_active_timeline_entry(context: Context) -> Activity | None:
     """
     target_date = context.today()
     log = get_log_by_date(context, target_date)
+    return log.active_timeline_entry()
 
     # Find the most recent ongoing timeline entry
     for timelineEntry in reversed(log.timeline):
@@ -223,20 +220,15 @@ def stop_timeline_entry(context: Context) -> str:
     """
     target_date = context.today()
     log = get_log_by_date(context, target_date)
-    now = pendulum.now()
+    now = context.now()
 
-    # Find the most recent ongoing timeline entry
-    for timelineEntry in reversed(log.timeline):
-        if not timelineEntry.end:
-            timelineEntry.end = now
-            write_log(context, log)
-            return f"Stopped logging for activity {timelineEntry.activity.name} at {now.to_time_string()}."
-
+    active_entry = log.active_timeline_entry()
+    if active_entry:
+        write_log(context, log.stop_active_timeline_entry(now))
+        return f"Stopped logging for activity {active_entry.activity.name} at {now.to_time_string()}."
+    
     return "No ongoing timeline entries found to stop."
 
-
-def today():
-    return pendulum.today().date()
 
 def load_valid_plans_for_day(context: Context,
                              target_date: pendulum.Date) -> List[Plan]:

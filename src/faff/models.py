@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Optional, List, Dict, Any
 
 import pendulum
@@ -48,21 +47,7 @@ class Plan:
             activities=activities
         )
 
-@dataclass
-class Log:
-    """A record of time spent on activities."""
-    date: pendulum.Date
-    timezone: pendulum.Timezone
-    summary: List[SummaryEntry] = field(default_factory=list)
-    timeline: List[TimelineEntry] = field(default_factory=list)
 
-    @classmethod
-    def from_dict(cls, data: dict) -> Log:
-        date = pendulum.parse(data["date"]).date()
-        timezone = pendulum.timezone(data["timezone"])
-        summary = [SummaryEntry.from_toml(e) for e in data.get("summary", [])]
-        timeline = [TimelineEntry.from_toml(e) for e in data.get("timeline", [])]
-        return cls(date, timezone, summary, timeline)
 
 @dataclass(frozen=True)
 class TimelineEntry:
@@ -73,26 +58,26 @@ class TimelineEntry:
     note: Optional[str] = None
 
     @classmethod
-    def from_dict(cls, data: dict) -> TimelineEntry:
-        activity = Activity(id = data.get("activity"),
-                            name = data.get("name"),
-                            meta = data.get("meta", {}))
-        start = pendulum.parse(data["start"])
-        end = pendulum.parse(data["end"]) if "end" in data else None
+    def from_dict(cls, data: dict, activities: Dict[str, Activity], timezone: pendulum.Timezone) -> TimelineEntry:
+        # XXX: I think I prefer that the log only persists the activity ID,
+        # but that could have unintended consequences.
+        # activity = Activity(id = data.get("activity"),
+        #                     name = data.get("name"),
+        #                     meta = data.get("meta", {}))
+        activity = activities.get(data.get("activity"))
+        start = pendulum.parse(data["start"], tz=timezone)
+        end = pendulum.parse(data["end"], tz=timezone) if "end" in data else None
         return cls(activity, start, end, data.get("note"))
 
-    @classmethod
-    def stop(cls, self, stop_time: pendulum.DateTime) -> TimelineEntry:
-        return cls(
+    def stop(self, stop_time: pendulum.DateTime) -> TimelineEntry:
+        return TimelineEntry(
             activity=self.activity,
             start=self.start,
-            project=self.project,
             end=stop_time,
-            note=self.note,
-            meta=self.meta
+            note=self.note
         )
 
-@dataclass
+@dataclass(frozen=True)
 class SummaryEntry:
     """A record of a total number of hours spent on an activity."""
     activity: Activity
@@ -100,12 +85,65 @@ class SummaryEntry:
     note: Optional[str] = None
 
     @classmethod
-    def from_dict(cls, toml_data: dict) -> TimelineEntry:
-        activity = Activity(id = toml_data.get("activity"),
-                            name = toml_data.get("name"),
-                            meta = toml_data.get("meta", {}))
-        return cls(activity, toml_data["duration"], toml_data.get("note"))
+    def from_dict(cls, data: dict, activities: Dict[str, Activity]) -> TimelineEntry:
+        # XXX: I think I prefer that the log only persists the activity ID,
+        # but that could have unintended consequences.
+        # activity = Activity(id = data.get("activity"),
+        #                     name = data.get("name"),
+        #                     meta = data.get("meta", {}))
+        activity = activities.get(data.get("activity"))
+
+        activity = Activity(id = data.get("activity"),
+                            name = data.get("name"),
+                            meta = data.get("meta", {}))
+        return cls(activity, data["duration"], data.get("note"))
+
+#FIXME: I aspire to freezing this; let's see if we can.
+@dataclass(frozen=True)
+class Log:
+    """A record of time spent on activities."""
+    date: pendulum.Date
+    timezone: pendulum.Timezone
+    summary: List[SummaryEntry] = field(default_factory=list)
+    timeline: List[TimelineEntry] = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, data: dict, activities: Dict[str, Activity]) -> Log:
+        date = pendulum.parse(data["date"]).date()
+        timezone = pendulum.timezone(data["timezone"])
+        summary = [SummaryEntry.from_dict(e, activities) for e in data.get("summary", [])]
+        timeline = [TimelineEntry.from_dict(e, activities, timezone) for e in data.get("timeline", [])]
+        return cls(date, timezone, summary, timeline)
     
+    def start_timeline_entry(self, activity: Activity, start: pendulum.DateTime,
+                                note: Optional[str] = None) -> Log:
+        return Log(
+            date=self.date,
+            timezone=self.timezone,
+            summary=self.summary,
+            timeline=self.timeline + [TimelineEntry(activity, start, note)]
+        )
+    
+    def active_timeline_entry(self) -> Optional[TimelineEntry]:
+        if not self.timeline:
+            return None
+        latest_entry = self.timeline[-1]
+        if latest_entry.end is None:
+            return latest_entry
+        return None
+
+    def stop_active_timeline_entry(self, stop_time: pendulum.DateTime) -> Log:
+        if not self.timeline:
+            raise ValueError("No timeline entries to stop.")
+        latest_entry = self.timeline[-1]
+        stopped_entry = latest_entry.stop(stop_time)
+        return Log(
+            date=self.date,
+            timezone=self.timezone,
+            summary=self.summary,
+            timeline=self.timeline[:-1] + [stopped_entry]
+        )
+
 @dataclass
 class Config:
     """Configuration for the faff CLI. This object includes the default values for the CLI."""

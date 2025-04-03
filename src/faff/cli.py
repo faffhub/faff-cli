@@ -64,7 +64,7 @@ def status(ctx: typer.Context):
     context = ctx.obj
     typer.echo(f"Status for faff repo root at: {context.find_faff_root()}")
 
-    todays_plans = core.load_valid_plans_for_day(context, core.today())
+    todays_plans = core.load_valid_plans_for_day(context, context.today())
     if len(todays_plans) == 1:
         typer.echo(f"There is 1 valid plan for today:")
     else:
@@ -89,7 +89,7 @@ def status(ctx: typer.Context):
 
     active_timeline_event = core.get_active_timeline_entry(context)
     if active_timeline_event:
-        duration = pendulum.now() - active_timeline_event.start
+        duration = context.now() - active_timeline_event.start
         if active_timeline_event.note:
             typer.echo(f"Working on {active_timeline_event.activity.name} (\"{active_timeline_event.note}\") for {duration.in_words()}")
         else:
@@ -98,22 +98,29 @@ def status(ctx: typer.Context):
         typer.echo("Not currently working on anything.")
 
 
+def get_date(context: Context, date: str = None) -> pendulum.Date:
+    """
+    Get a date object from an argument string, or use the current date.
+    """
+    if date:
+        return pendulum.parse(date).date()
+    else:
+        return context.today()
+
+
 @cli_log.command()
-def edit(ctx: typer.Context):
+def edit(ctx: typer.Context, date: str = typer.Argument(None)):
     """Log your activities for the day by opening a file in your preferred editor."""
     context = ctx.obj
-    typer.echo(core.edit_log(context, core.today()))
+    typer.echo(core.edit_log(context, get_date(context, date)))
 
 
 @cli_log.command()
 def start(ctx: typer.Context, activity_id: str, note: str = typer.Argument(None)):
     """
-    Add an entry to the day's Private Log.
+    Add an entry to today's Private Log, starting now.
     """
     context = ctx.obj
-    valid_plans = core.load_valid_plans_for_day(context,
-                                               core.today())
-
     typer.echo(core.start_timeline_entry(context,
                                          activity_id,
                                          note))
@@ -127,35 +134,39 @@ def stop(ctx: typer.Context):
     typer.echo(core.stop_timeline_entry(context))
 
 @cli_log.command()
-def refresh(ctx: typer.Context):
+def refresh(ctx: typer.Context, date: str = typer.Argument(None)):
     """
     Reformat the log file.
     """
     context = ctx.obj
-    log = core.get_log_by_date(context, core.today())
+    log = core.get_log_by_date(context, get_date(context, date))
     core.write_log(context, log)
     typer.echo("Log refreshed.")
 
 @cli_plan.command()
-def list(ctx: typer.Context):
+def list(ctx: typer.Context, date: str = typer.Argument(None)):
     """
-    Show the planned activities for today
+    Show the planned activities for a given day, defaulting to today
     """
     context = ctx.obj
-    todays_plans = core.load_valid_plans_for_day(context, core.today())
-    for plan in todays_plans:
+
+    plans = core.load_valid_plans_for_day(context, get_date(context, date))
+    for plan in plans:
         typer.echo(f"Plan: {plan.source} (valid from {plan.valid_from})")
         for activity in plan.activities:
             typer.echo(f"- {activity.id}: {activity.name}")
 
+
 @cli_plan.command()
-def pull(ctx: typer.Context):
+def pull(ctx: typer.Context, date: str = typer.Argument(None)):
     """
     Pull planned activities from all sources.
     """
     context = ctx.obj
     plugins = core.load_plugins(context)
-    plugins.get('jira')().pull_plan(pendulum.today(), pendulum.today(), {})
+    plugins.get('jira')().pull_plan(
+        get_date(context, date),
+        get_date(context, date), {})
 
 
 if __name__ == "__main__":

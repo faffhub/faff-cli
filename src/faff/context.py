@@ -28,8 +28,17 @@ class Context:
             toml_data = tomllib.load(f)
             self.config = Config.from_dict(toml_data)
 
+    def now(self) -> pendulum.DateTime:
+        """
+        Get the current time in the configured timezone
+        """
+        timezone = self.config.timezone
+        return pendulum.now(timezone)
+
     def today(self) -> pendulum.Date:
-        #FIXME: Why is this funciton in context and core?
+        """
+        Get today's date.
+        """
         return pendulum.today().date()
 
     def require_faff_root(self) -> Path:
