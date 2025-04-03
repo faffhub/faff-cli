@@ -29,7 +29,7 @@ def get_log_by_date(context: Context, target_date: pendulum.Date) -> Log:
 
     if log_file.exists():
         with open(log_file, "r") as f:
-            log = Log.from_toml(toml.load(f))
+            log = Log.from_dict(toml.load(f))
             for timelineEntry in log.timeline:
                 if timelineEntry.activity.id in activities.keys():
                     timelineEntry.activity = activities.get(timelineEntry.activity.id)                

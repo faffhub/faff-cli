@@ -56,15 +56,15 @@ class Log:
     summary: List[SummaryEntry] = field(default_factory=list)
     timeline: List[TimelineEntry] = field(default_factory=list)
 
-    @staticmethod
-    def from_toml(toml_data: dict) -> Log:
-        date = pendulum.parse(toml_data["date"]).date()
-        timezone = pendulum.timezone(toml_data["timezone"])
-        summary = [SummaryEntry.from_toml(e) for e in toml_data.get("summary", [])]
-        timeline = [TimelineEntry.from_toml(e) for e in toml_data.get("timeline", [])]
-        return Log(date, timezone, summary, timeline)
+    @classmethod
+    def from_dict(cls, data: dict) -> Log:
+        date = pendulum.parse(data["date"]).date()
+        timezone = pendulum.timezone(data["timezone"])
+        summary = [SummaryEntry.from_toml(e) for e in data.get("summary", [])]
+        timeline = [TimelineEntry.from_toml(e) for e in data.get("timeline", [])]
+        return cls(date, timezone, summary, timeline)
 
-@dataclass
+@dataclass(frozen=True)
 class TimelineEntry:
     """A record of time spent on an activity."""
     activity: Activity
@@ -72,17 +72,18 @@ class TimelineEntry:
     end: Optional[pendulum.DateTime] = None
     note: Optional[str] = None
 
-    @staticmethod
-    def from_toml(toml_data: dict) -> TimelineEntry:
-        activity = Activity(id = toml_data.get("activity"),
-                            name = toml_data.get("name"),
-                            meta = toml_data.get("meta", {}))
-        start = pendulum.parse(toml_data["start"])
-        end = pendulum.parse(toml_data["end"]) if "end" in toml_data else None
-        return TimelineEntry(activity, start, end, toml_data.get("note"))
+    @classmethod
+    def from_dict(cls, data: dict) -> TimelineEntry:
+        activity = Activity(id = data.get("activity"),
+                            name = data.get("name"),
+                            meta = data.get("meta", {}))
+        start = pendulum.parse(data["start"])
+        end = pendulum.parse(data["end"]) if "end" in data else None
+        return cls(activity, start, end, data.get("note"))
 
-    def stop(self, stop_time: pendulum.DateTime) -> TimelineEntry:
-        return TimelineEntry(
+    @classmethod
+    def stop(cls, self, stop_time: pendulum.DateTime) -> TimelineEntry:
+        return cls(
             activity=self.activity,
             start=self.start,
             project=self.project,
@@ -98,12 +99,12 @@ class SummaryEntry:
     duration: str # ISO8601 duration string
     note: Optional[str] = None
 
-    @staticmethod
-    def from_toml(toml_data: dict) -> TimelineEntry:
+    @classmethod
+    def from_dict(cls, toml_data: dict) -> TimelineEntry:
         activity = Activity(id = toml_data.get("activity"),
                             name = toml_data.get("name"),
                             meta = toml_data.get("meta", {}))
-        return SummaryEntry(activity, toml_data["duration"], toml_data.get("note"))
+        return cls(activity, toml_data["duration"], toml_data.get("note"))
     
 @dataclass
 class Config:
