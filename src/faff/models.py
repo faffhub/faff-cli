@@ -126,7 +126,7 @@ class Log:
                 date=self.date,
                 timezone=self.timezone,
                 summary=self.summary,
-                timeline=self.timeline + [TimelineEntry(activity, start, note)]
+                timeline=self.timeline + [TimelineEntry(activity, start, end=None, note=note)]
             )
     
     def active_timeline_entry(self) -> Optional[TimelineEntry]:
