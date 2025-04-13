@@ -98,7 +98,6 @@ class SummaryEntry:
                             meta = data.get("meta", {}))
         return cls(activity, data["duration"], data.get("note"))
 
-#FIXME: I aspire to freezing this; let's see if we can.
 @dataclass(frozen=True)
 class Log:
     """A record of time spent on activities."""
@@ -148,6 +147,16 @@ class Log:
             summary=self.summary,
             timeline=self.timeline[:-1] + [stopped_entry]
         )
+
+@dataclass(frozen=True)
+class TimeSheet():
+    """A filtered business."""
+    subject: Dict[str, Any]
+    signatures: List[str]
+    date: pendulum.Date
+    timezone: pendulum.Timezone
+    summary: List[SummaryEntry] = field(default_factory=list)
+    timeline: List[TimelineEntry] = field(default_factory=list)
 
 @dataclass
 class Config:

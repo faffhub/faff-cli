@@ -4,319 +4,400 @@ import re
 import os
 import toml
 import tomllib
-import subprocess
+import tomlkit
+
+# FIXME: Three toml libraries is two too many.
 
 from pathlib import Path
 from typing import List, Dict, Type, Any, Callable, Optional
-from tomlkit import document, table, comment
+#from tomlkit import document, table, comment
 from abc import ABC, abstractmethod
 
-from faff.models import Plan, Log, Activity, TimelineEntry, SummaryEntry
-from faff.context import Context
+from faff.models import Plan, Log, TimeSheet, Activity
+from faff.models import Config
 
 TIME_FORMAT_REGEX = re.compile(r"^\d+h(\d+m)?$|^\d+m$")
 
-def get_log_file_path_by_date(context: Context, target_date: pendulum.Date) -> Path:
-    logs_dir = context.require_faff_root() / ".faff" / "logs"
-    log_file = logs_dir / f"{target_date.to_date_string()}.toml"
-    return log_file
+class FileSystem:
+    ROOT_NAME = ".faff"
+    VALID_DIRECTORY_STRUCTURE = {
+        '.faff': {
+            'config.toml': None,
+            'plans': {},
+            'plugins': {},
+            'logs': {},
+            'timesheets': {},
+        }
+    }
 
-def get_log_by_date(context: Context, target_date: pendulum.Date) -> Log:
-    now = pendulum.now()
-    log_file = get_log_file_path_by_date(context, target_date)
+    def __init__(self, working_dir: Path | None = None):
+        self.working_dir = working_dir or Path.cwd()
 
-    activities = valid_activities(context, target_date)
+        self.LOG_PATH = self.require_faff_root() / ".faff" / "logs"
+        self.PLAN_PATH = self.require_faff_root() / ".faff" / "plans"
+        self.PLUGIN_PATH = self.require_faff_root() / ".faff" / "plugins"
+        self.CONFIG_PATH = self.require_faff_root() / ".faff" / "config.toml"
 
-    if log_file.exists():
-        with open(log_file, "r") as f:
-            return Log.from_dict(toml.load(f), activities)
-    else:
-        return Log(target_date, context.config.timezone)
-
-def date_has_DST_event(context: Context, target_date: pendulum.Date) -> bool:
-    tz = context.config.timezone  # Get the timezone from the context
-
-    # Convert the date to datetime at the start and end of the day
-    start_of_day = pendulum.datetime(target_date.year, target_date.month, target_date.day, 0, 0, tz=tz)
-    end_of_day = pendulum.datetime(target_date.year, target_date.month, target_date.day, 23, 59, tz=tz)
-
-    # Get DST offset at the start and end of the day
-    start_dst_offset = start_of_day.utcoffset().total_seconds()
-    end_dst_offset = end_of_day.utcoffset().total_seconds()
-
-    # If the offset changes during the day, there is a DST event
-    return start_dst_offset != end_dst_offset
-
-def get_datetime_format(context: Context, target_date: pendulum.Date) -> str:
-    if date_has_DST_event(context, target_date):
-        return "YYYY-MM-DDTHH:mmZ"
-    else:
-        return "YYYY-MM-DDTHH:mm"
-
-def write_log(context: Context, log: Log):
-    log_file = get_log_file_path_by_date(context, log.date)
-    activities = valid_activities(context, log.date)
-
-    doc = document()
-    doc.add(comment("This is a Faff-format log file. See faffage.com for details."))
-    doc.add(comment("It has been generated but can be edited manually."))
-    doc.add(comment("Changes to rows starting with '#' will be ignored."))
-
-    # Add log data
-    doc["date"] = log.date.to_date_string()
-    doc["timezone"] = str(log.timezone)
-
-    if not date_has_DST_event(context, log.date):
-        doc["--date_format"] = "YYYY-MM-DDTHH:mm"
-    else:
-        doc["--date_format"] = "YYYY-MM-DDTHH:mmZ"
-
-    # Add summary entries
-    summary_array = []
-    for entry in log.summary:
-        activity = activities.get(entry.activity.id)
-        summary_entry = table()
-        summary_entry["activity"] = entry.activity.id
-        if activity.project:
-            summary_entry["--project"] = activity.project
-        if activity.name:
-            summary_entry["--name"] = activity.name
-        summary_entry["duration"] = entry.duration
-        if entry.note:
-            summary_entry["note"] = entry.note
-        summary_array.append(summary_entry)
-
-    if len(summary_array) > 0:
-        doc["summary"] = summary_array
-
-    # Add timeline entries
-    timeline_array = []
-    for entry in log.timeline:
-        activity = activities.get(entry.activity.id)
-        timeline_entry = table()
-        timeline_entry["activity"] = entry.activity.id
-        if activity.project:
-            timeline_entry["--project"] = activity.project
-        if activity.name:
-            timeline_entry["--name"] = activity.name
-        timeline_entry["start"] = entry.start.format(get_datetime_format(context, log.date))
-        if entry.end:
-            timeline_entry["end"] = entry.end.format(get_datetime_format(context, log.date))
-            interval = (entry.end - entry.start)
-            duration = pendulum.duration(seconds=interval.total_seconds())
-            timeline_entry["--duration"] = duration.in_words() #format_duration_as_iso8601(duration)
-        if entry.note:
-            timeline_entry["note"] = entry.note
-        timeline_array.append(timeline_entry)
-    doc["timeline"] = timeline_array
-
-    # Convert the TOML document to a string
-    toml_string = doc.as_string()
-
-    # Align the `=` signs
-    processed_toml = commentify_derived_values(align_equals(toml_string))
-
-    # Write the aligned TOML to the file
-    with open(log_file, "w") as f:
-        f.write(processed_toml)
-
-def commentify_derived_values(toml_string: str) -> str:
-    """
-    Replace lines starting with '--' followed by a valid TOML variable name
-    with a comment.
-
-    Args:
-        toml_string (str): The TOML string to process.
-
-    Returns:
-        str: The processed TOML string with matching lines replaced as comments.
-    """
-    # Regular expression to match lines like '--something = "some value"'
-    pattern = r"^--([a-zA-Z_][a-zA-Z0-9_]*\s*=\s*.+)$"
-
-    # Replace matching lines with comments
-    processed_toml = re.sub(pattern, r"# \1", toml_string, flags=re.MULTILINE)
-
-    return processed_toml
-
-def align_equals(toml_string: str) -> str:
-    """
-    Aligns the `=` signs in the TOML string for better readability.
-    """
-    lines = toml_string.splitlines()
-    max_key_length = 0
-
-    # Calculate the maximum key length for alignment
-    for line in lines:
-        if "=" in line and not line.strip().startswith("#"):
-            key = line.split("=")[0].strip()
-            max_key_length = max(max_key_length, len(key))
-
-    # Align the `=` signs
-    aligned_lines = []
-    for line in lines:
-        if "=" in line and not line.strip().startswith("#"):
-            key, value = line.split("=", 1)
-            key = key.strip()
-            value = value.strip()
-            padding = " " * (max_key_length - len(key))
-            aligned_lines.append(f"{key}{padding} = {value}")
-        else:
-            aligned_lines.append(line)
-
-    return "\n".join(aligned_lines)
-
-def valid_activities(context: Context, target_date: pendulum.Date) -> List[str]:
-    valid_plans = load_valid_plans_for_day(context, target_date)
-    activities = {activity.id: activity
-                  for plan in valid_plans
-                  for activity in plan.activities}
-    return activities
-
-def start_timeline_entry(context: Context,
-                         activity_id: str, note: str) -> str:
-    """
-    Start a timeline entry for the given activity, stopping any previous one.
-    """
-    log = get_log_by_date(context, context.today())
-    now = pendulum.now()
-
-    activities = valid_activities(context, context.today())
-
-    if activity_id not in activities:
-        return f"Activity {activity_id} not found in today's plan."
-
-    activity = activities[activity_id]
-    log = log.start_timeline_entry(activity, now, note)
-
-    write_log(context, log)
-    return f"Started logging for activity {activity_id} at {now.to_time_string()}."
-
-def stop_timeline_entry(context: Context) -> str:
-    """
-    Stop the most recent ongoing timeline entry.
-    """
-    target_date = context.today()
-    log = get_log_by_date(context, target_date)
-    now = context.now()
-
-    active_entry = log.active_timeline_entry()
-    if active_entry:
-        write_log(context, log.stop_active_timeline_entry(now))
-        return f"Stopped logging for activity {active_entry.activity.name} at {now.to_time_string()}."
+    # FIXME: this method name is confusing
+    def log_path(self, date: pendulum.Date) -> Path:
+        """
+        Returns the path to the log file for the given date.
+        """
+        return self.LOG_PATH / f"{date.to_date_string()}.toml"
     
-    return "No ongoing timeline entries found to stop."
+    def require_faff_root(self) -> Path:
+        """
+        Search upwards from a given path for a `.faff` directory.
+        Args:
+            start_path (Path): The path to start searching from.
+        Returns:
+            Path: The path to the directory containing `.faff`.
+        Raises:
+            FileNotFoundError: If no `.faff` directory is found in the path hierarchy.
+        """
+        path = self.find_faff_root()
+        if path is None:
+            raise FileNotFoundError(
+                f"No {self.ROOT_NAME} directory found from start {self.working_dir}.")
+        return path
+
+    def find_faff_root(self) -> Path | None:
+        """
+        Search upwards from a given path for a `.faff` directory.
+        Args:
+            start_path (Path): The path to start searching from.
+        Returns:
+            Path | None: The path to the directory containing `.faff`, or None if not found.
+        """
+        possible_root = self.working_dir
+
+        while True:
+            subdirs = [
+                fname
+                for fname in os.listdir(possible_root)
+                if os.path.isdir(os.path.join(possible_root, fname))
+            ]
+            if self.ROOT_NAME in subdirs:
+                return possible_root
+            else:
+                next_possible_root = \
+                    Path(possible_root).parent.absolute()
+                if next_possible_root == possible_root:
+                    return None
+                else:
+                    possible_root = next_possible_root
+
+    def initialise_repo(self) -> None:
+        """
+        Initialise a new `.faff` directory in the current working directory.
+        """
+        already_initialised = self.find_faff_root()
+        if already_initialised:
+            raise FileExistsError(
+                f"Directory {already_initialised} already contains a {self.ROOT_NAME} directory.")  # noqa
+
+        self._create_directory_structure(self.VALID_DIRECTORY_STRUCTURE, self.working_dir)
+
+    def _create_directory_structure(self, directory_structure: dict,
+                                    base_path : Path | None) -> None:
+        """
+        Recursively create directory structure from a dictionary object.
+        """
+        if base_path is None:
+            base_path = self.working_dir
+
+        for name, value in directory_structure.items():
+            path = os.path.join(base_path, name)
+            
+            if isinstance(value, dict):
+                # Create directory if it doesn't exist
+                if not os.path.exists(path):
+                    os.makedirs(path)
+                # Recursively create directory structure
+                self.create_directory_structure(value, path)
+            else:
+                # Create file if it doesn't exist
+                if not os.path.exists(path):
+                    with open(path, "w") as f:
+                        pass
 
 
-def load_valid_plans_for_day(context: Context,
-                             target_date: pendulum.Date) -> List[Plan]:
+class LogFormatter:
+
+    @classmethod
+    def format_log(cls, log: Log, activities: List[Activity]) -> str:
+        doc = tomlkit.document()
+        doc.add(tomlkit.comment("This is a Faff-format log file - see faffage.com for details."))
+        doc.add(tomlkit.comment("It has been generated but can be edited manually."))
+        doc.add(tomlkit.comment("Changes to rows starting with '#' will not be saved."))
+
+        # Add log data
+        doc["date"] = log.date.to_date_string()
+        doc["timezone"] = str(log.timezone)
+
+        doc["--date_format"] = cls._get_datetime_format(log.date, log.timezone)
+
+        # Add summary entries
+        summary_array = []
+        for entry in log.summary:
+            activity = activities.get(entry.activity.id)
+            summary_entry = tomlkit.table()
+            summary_entry["activity"] = entry.activity.id
+            if activity.project:
+                summary_entry["--project"] = activity.project
+            if activity.name:
+                summary_entry["--name"] = activity.name
+            summary_entry["duration"] = entry.duration
+            if entry.note:
+                summary_entry["note"] = entry.note
+            summary_array.append(summary_entry)
+
+        if len(summary_array) > 0:
+            doc["summary"] = summary_array
+
+        # Add timeline entries
+        timeline_array = []
+        for entry in log.timeline:
+            activity = activities.get(entry.activity.id)
+            timeline_entry = tomlkit.table()
+            timeline_entry["activity"] = entry.activity.id
+            if activity.project:
+                timeline_entry["--project"] = activity.project
+            if activity.name:
+                timeline_entry["--name"] = activity.name
+            timeline_entry["start"] = entry.start.format(
+                cls._get_datetime_format(log.date, log.timezone))
+            if entry.end:
+                timeline_entry["end"] = entry.end.format(
+                    cls._get_datetime_format(log.date, log.timezone))
+                interval = (entry.end - entry.start)
+                duration = pendulum.duration(seconds=interval.total_seconds())
+                timeline_entry["--duration"] = duration.in_words()
+            if entry.note:
+                timeline_entry["note"] = entry.note
+            timeline_array.append(timeline_entry)
+        doc["timeline"] = timeline_array
+
+        # Convert the TOML document to a string
+        toml_string = doc.as_string()
+
+        # Align the `=` signs
+        processed_toml = cls.commentify_derived_values(cls.align_equals(toml_string))
+
+        return processed_toml
+
+    @classmethod
+    def commentify_derived_values(cls, toml_string: str) -> str:
+        """
+        Replace lines starting with '--' followed by a valid TOML variable name
+        with a comment.
+
+        Args:
+            toml_string (str): The TOML string to process.
+
+        Returns:
+            str: The processed TOML string with matching lines replaced as comments.
+        """
+        # Regular expression to match lines like '--something = "some value"'
+        pattern = r"^--([a-zA-Z_][a-zA-Z0-9_]*\s*=\s*.+)$"
+
+        # Replace matching lines with comments
+        processed_toml = re.sub(pattern, r"# \1", toml_string, flags=re.MULTILINE)
+
+        return processed_toml
+
+    @classmethod
+    def align_equals(cls, toml_string: str) -> str:
+        """
+        Aligns the `=` signs in the TOML string for better readability.
+        """
+        lines = toml_string.splitlines()
+        max_key_length = 0
+
+        # Calculate the maximum key length for alignment
+        for line in lines:
+            if "=" in line and not line.strip().startswith("#"):
+                key = line.split("=")[0].strip()
+                max_key_length = max(max_key_length, len(key))
+
+        # Align the `=` signs
+        aligned_lines = []
+        for line in lines:
+            if "=" in line and not line.strip().startswith("#"):
+                key, value = line.split("=", 1)
+                key = key.strip()
+                value = value.strip()
+                padding = " " * (max_key_length - len(key))
+                aligned_lines.append(f"{key}{padding} = {value}")
+            else:
+                aligned_lines.append(line)
+
+        return "\n".join(aligned_lines)
+
+    @classmethod
+    def _date_has_DST_event(cls, date: pendulum.Date, timezone: pendulum.Timezone) -> bool:
+        # Convert the date to datetime at the start and end of the day
+        start_of_day = pendulum.datetime(date.year, date.month, date.day, 0, 0, tz=timezone)
+        end_of_day = pendulum.datetime(date.year, date.month, date.day, 23, 59, tz=timezone)
+
+        # Get DST offset at the start and end of the day
+        start_dst_offset = start_of_day.utcoffset().total_seconds()
+        end_dst_offset = end_of_day.utcoffset().total_seconds()
+
+        # If the offset changes during the day, there is a DST event
+        return start_dst_offset != end_dst_offset
+
+    @classmethod
+    def _get_datetime_format(cls, date: pendulum.Date, timezone: pendulum.Timezone) -> str:
+        if cls._date_has_DST_event(date, timezone):
+            return "YYYY-MM-DDTHH:mmZ"
+        else:
+            return "YYYY-MM-DDTHH:mm"
+
+
+class Workspace:
     """
-    Loads all plans from the `.faff/plans` directory under the given root,
-    and returns those valid on the target date.
-
-    A plan is valid if:
-    - valid_from <= target_date
-    - and (valid_until >= target_date or valid_until is None)
     """
-    plans_dir = context.require_faff_root() / ".faff" / "plans"
-    valid_plans = {}
-    for file in plans_dir.glob("*.toml"):
-        try:
-            with file.open("rb") as f:
-                data = tomllib.load(f)
-                plan = Plan.from_dict(data)
 
-        except Exception as e:
-            # Optionally log/print or raise depending on how strict you want to be
-            continue
+    def __init__(self):
+        self.fs = FileSystem()
+        
+        with self.fs.CONFIG_PATH.open("rb") as f:
+            toml_data = tomllib.load(f)
+            self.config = Config.from_dict(toml_data)
 
-        if plan.valid_from and plan.valid_from > target_date:
-            continue
-        if plan.valid_until and plan.valid_until < target_date:
-            continue
+    def now(self) -> pendulum.DateTime:
+        """
+        Get the current time in the configured timezone
+        """
+        timezone = self.config.timezone
+        return pendulum.now(timezone)
 
-        if plan.source not in valid_plans.keys():
-            valid_plans[plan.source] = plan
+    def today(self) -> pendulum.Date:
+        """
+        Get today's date.
+        """
+        return pendulum.today().date()   
 
-        if valid_plans.get(plan.source) and valid_plans[plan.source].valid_from < plan.valid_from:
-            valid_plans[plan.source] = plan
+    def get_activities(self, date: pendulum.Date) -> List[Activity]:
+        """
+        Returns a list of activities for the given date.
+        """
+        plans = self.get_plans(date)
+        return {activity.id: activity
+                for plan in plans
+                for activity in plan.activities}
 
-    return valid_plans.values()
+    def get_plans(self, date: pendulum.Date) -> List[Plan]:
+        """
+        Loads all plans from the `.faff/plans` directory under the given root,
+        and returns those valid on the target date.
 
-def edit_config(context: Context):
-    config_file = context.require_faff_root() / ".faff" / "config.toml"
-    editor = os.getenv("EDITOR", "vim")  # Default to vim if $EDITOR is not set
+        A plan is valid if:
+        - valid_from <= target_date
+        - and (valid_until >= target_date or valid_until is None)
+        """
+        plans = {}
+        for file in self.fs.PLAN_PATH.glob("*.toml"):
+            try:
+                with file.open("rb") as f:
+                    data = tomllib.load(f)
+                    plan = Plan.from_dict(data)
 
-    pre_edit_hash = config_file.read_text().__hash__()
-    # Open the file in the editor
-    try:
-        subprocess.run([editor, str(config_file)], check=True)
-    except FileNotFoundError:
-        return
+            except Exception as e:
+                # FIXME: We should say when we're skipping a malformed file.
+                continue
 
-    post_edit_hash = config_file.read_text().__hash__()
+            if plan.valid_from and plan.valid_from > date:
+                continue
+            if plan.valid_until and plan.valid_until < date:
+                continue
 
-    if pre_edit_hash == post_edit_hash:
-        return "No changes detected."
-    else:
-        return "Config updated."
+            if plan.source not in plans.keys():
+                plans[plan.source] = plan
 
-def edit_log(context: Context, target_date: pendulum.Date):
-    log_file = get_log_file_path_by_date(context, target_date)
-    pre_edit_hash = log_file.read_text().__hash__()
+            if plans.get(plan.source) and plans[plan.source].valid_from < plan.valid_from:
+                plans[plan.source] = plan
 
-    editor = os.getenv("EDITOR", "vim")  # Default to vim if $EDITOR is not set
+        return plans.values()
 
-    # Open the file in the editor
-    try:
-        subprocess.run([editor, str(log_file)], check=True)
-    except FileNotFoundError:
-        return
+    def get_log(self, date: pendulum.Date) -> Log:
+        """
+        Returns the log for the given date.
+        """
+        log_path = self.fs.log_path(date)
+        activities = self.get_activities(date)
 
-    post_edit_hash = log_file.read_text().__hash__()
+        if log_path.exists():
+            return Log.from_dict(tomlkit.parse(log_path.read_text()), activities)
+        else:
+            return Log(date, self.config.timezone)
 
-    if pre_edit_hash == post_edit_hash:
-        return "No changes detected."
-    else:
-        log = get_log_by_date(context, target_date)
-        write_log(context, log)
-        return "Log updated."
+    def write_log(self, log: Log):
+        """
+        Writes the log to the file.
+        """
+        log_contents = LogFormatter.format_log(log, self.get_activities(log.date))
+        log_filename = self.fs.log_path(log.date)
+        with open(log_filename, "w") as f:
+            f.write(log_contents)
 
-def log_is_valid(context: Context, target_date: pendulum.Date) -> List[str]:
-    """Check the log data for errors and inconsistencies."""
-    try:
-        log = get_log_by_date(context, target_date)
-        return True
-    except:
-        return False
+    def start_timeline_entry(self, activity_id: str, note: str) -> str:
+        """
+        Start a timeline entry for the given activity, stopping any previous one.
+        """
+        log = self.get_log(self.today())
+        now = self.now()
+
+        activities = self.get_activities(self.today())
+
+        if activity_id not in activities:
+            return f"Activity {activity_id} not found in today's plan."
+
+        activity = activities[activity_id]
+        log = log.start_timeline_entry(activity, now, note)
+
+        self.write_log(log)
+        return f"Started logging for activity {activity_id} at {now.to_time_string()}."
+
+    def stop_timeline_entry(self) -> str:
+        """
+        Stop the most recent ongoing timeline entry.
+        """
+        target_date = self.today()
+        log = self.get_log(target_date)
+        now = self.now()
+
+        active_entry = log.active_timeline_entry()
+        if active_entry:
+            self.write_log(log.stop_active_timeline_entry(now))
+            return f"Stopped logging for activity {active_entry.activity.name} at {now.to_time_string()}."
+        
+        return "No ongoing timeline entries found to stop."
+
+    def load_plugins(self) -> Dict[str, Type]:
+        plugins = {}
+
+        for plugin_file in self.fs.PLUGIN_PATH.glob("*.py"):
+            if plugin_file.name == "__init__.py":
+                continue
+
+            module_name = f"plugins.{plugin_file.stem}"
+            spec = importlib.util.spec_from_file_location(module_name, plugin_file)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+
+            for attr_name in dir(module):
+                attr = getattr(module, attr_name)
+                if isinstance(attr, type) and (
+                    issubclass(attr, PullPlugin) or issubclass(attr, PushPlugin)
+                ) and attr not in (PullPlugin, PushPlugin):
+                    plugins[plugin_file.stem] = attr  # Store the class
+
+        return plugins
 
 
-def load_plugins(context: Context) -> Dict[str, Type]:
-    plugins_dir = context.require_faff_root() / ".faff" / "plugins"
-    plugins = {}
-
-    if not plugins_dir.exists():
-        plugins_dir.mkdir(parents=True, exist_ok=True)
-
-    for plugin_file in plugins_dir.glob("*.py"):
-        if plugin_file.name == "__init__.py":
-            continue
-
-        module_name = f"plugins.{plugin_file.stem}"
-        spec = importlib.util.spec_from_file_location(module_name, plugin_file)
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-
-        for attr_name in dir(module):
-            attr = getattr(module, attr_name)
-            if isinstance(attr, type) and (
-                issubclass(attr, PullConnector) or issubclass(attr, PushConnector)
-            ) and attr not in (PullConnector, PushConnector):
-                plugins[plugin_file.stem] = attr  # Store the class
-
-    return plugins  
-
-class PullConnector(ABC):
+class PullPlugin(ABC):
     @abstractmethod
     def pull_plan(self, start: pendulum.Date, end: pendulum.Date, 
                   config: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -332,7 +413,7 @@ class PullConnector(ABC):
         pass
 
 
-class PushConnector(ABC):
+class PushPlugin(ABC):
     @abstractmethod
     def push_timesheet(self, config: Dict[str, Any], timesheet: Dict[str, Any]) -> None:
         """
@@ -341,5 +422,34 @@ class PushConnector(ABC):
         Args:
             config (Dict[str, Any]): Configuration specific to the destination.
             timesheet (Dict[str, Any]): The compiled timesheet to push.
+        """
+        pass
+
+
+class CompilePlugin(ABC):
+    @abstractmethod
+    def compile_time_sheet(self, log: Log) -> TimeSheet:
+        """
+        Generates a report based on the provided log.
+
+        Args:
+            log (Log): The log to generate a report from.
+
+        Returns:
+            str: The generated report.
+        """
+        pass
+
+    @abstractmethod
+    def sign_timesheet(self, timesheet: TimeSheet, signature: str) -> TimeSheet:
+        """
+        Returns a signed version of the timesheet.
+
+        Args:
+            timesheet (TimeSheet): The timesheet to sign.
+            signature (str): The signature to add.
+
+        Returns:
+            TimeSheet: The signed timesheet.
         """
         pass

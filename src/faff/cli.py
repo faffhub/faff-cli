@@ -1,7 +1,12 @@
-import typer
+import subprocess
 import pendulum
-from faff import core
-from faff.context import Context
+import typer
+import os
+
+from pathlib import Path
+
+from faff.core import Workspace
+from faff.core import PullPlugin, PushPlugin, CompilePlugin
 
 cli = typer.Typer()
 
@@ -32,20 +37,39 @@ Design considerations:
     faff report push <id>
 """
 
+def edit_file(path: Path):
+    editor = os.getenv("EDITOR", "vim")  # Default to vim if $EDITOR is not set
+
+    pre_edit_hash = path.read_text().__hash__()
+    # Open the file in the editor
+    try:
+        subprocess.run([editor, str(path)], check=True)
+    except FileNotFoundError:
+        return
+
+    post_edit_hash = path.read_text().__hash__()
+
+    # FIXME: This would be better if we returned None on successful change and
+    # raised an error on no changes detected.
+    if pre_edit_hash == post_edit_hash:
+        typer.echo("No changes detected.")
+    else:
+        typer.echo("File updated.")
+
 @cli.callback()
 def main(ctx: typer.Context):
-    ctx.obj = Context()
+    ctx.obj = Workspace()
 
 @cli.command()
 def init(ctx: typer.Context):
     """
     Initialise faff obj.
     """
-    context = ctx.obj
+    ws = ctx.obj
 
     typer.echo("Initialising faff repository.")
-    context.initialise_repo()
-    faff_root = context.require_faff_root()
+    ws.fs.initialise_repo()
+    faff_root = ws.fs.require_faff_root()
     typer.echo(f"Initialised faff repository at {faff_root}.")
 
 @cli.command()
@@ -53,18 +77,18 @@ def config(ctx: typer.Context):
     """
     Edit the faff configuration in your preferred editor.
     """
-    context = ctx.obj
-    typer.echo(core.edit_config(context))
+    ws = ctx.obj
+    edit_file(ws.fs.CONFIG_PATH)
 
 @cli.command()
 def status(ctx: typer.Context):
     """
     Show the status of the faff repository.
     """
-    context = ctx.obj
-    typer.echo(f"Status for faff repo root at: {context.find_faff_root()}")
+    ws = ctx.obj
+    typer.echo(f"Status for faff repo root at: {ws.fs.find_faff_root()}")
 
-    todays_plans = core.load_valid_plans_for_day(context, context.today())
+    todays_plans = ws.get_plans(ws.today())
     if len(todays_plans) == 1:
         typer.echo(f"There is 1 valid plan for today:")
     else:
@@ -73,7 +97,7 @@ def status(ctx: typer.Context):
     for plan in todays_plans:
         typer.echo(f"- {plan.source} (valid from {plan.valid_from})")
 
-    plugins = core.load_plugins(context)
+    plugins = ws.load_plugins()
     if len(plugins) == 1:
         typer.echo(f"There is 1 connector plugin installed:")
     else:
@@ -81,17 +105,19 @@ def status(ctx: typer.Context):
 
     for plugin_name, plugin in plugins.items():
         types = []
-        if issubclass(plugin, core.PullConnector):
+        if issubclass(plugin, PullPlugin):
             types.append("pull")
-        if issubclass(plugin, core.PushConnector):
+        if issubclass(plugin, PushPlugin):
             types.append("push")
+        if issubclass(plugin, CompilePlugin):
+            types.append("compile")
         typer.echo(f"- {plugin_name} ({', '.join(types)})")
 
-    log = core.get_log_by_date(context, context.today())
+    log = ws.get_log(ws.today())
     active_timeline_entry = log.active_timeline_entry()
 
     if active_timeline_entry:
-        duration = context.now() - active_timeline_entry.start
+        duration = ws.now() - active_timeline_entry.start
         if active_timeline_entry.note:
             typer.echo(f"Working on {active_timeline_entry.activity.name} (\"{active_timeline_entry.note}\") for {duration.in_words()}")
         else:
@@ -100,21 +126,21 @@ def status(ctx: typer.Context):
         typer.echo("Not currently working on anything.")
 
 
-def get_date(context: Context, date: str = None) -> pendulum.Date:
+def get_date(workspace: Workspace, date: str = None) -> pendulum.Date:
     """
     Get a date object from an argument string, or use the current date.
     """
     if date:
         return pendulum.parse(date).date()
     else:
-        return context.today()
+        return workspace.today()
 
 
 @cli_log.command()
 def edit(ctx: typer.Context, date: str = typer.Argument(None)):
     """Log your activities for the day by opening a file in your preferred editor."""
-    context = ctx.obj
-    typer.echo(core.edit_log(context, get_date(context, date)))
+    ws = ctx.obj
+    edit_file(ws.fs.log_path(get_date(ws, date)))
 
 
 @cli_log.command()
@@ -122,27 +148,24 @@ def start(ctx: typer.Context, activity_id: str, note: str = typer.Argument(None)
     """
     Add an entry to today's Private Log, starting now.
     """
-    context = ctx.obj
-    typer.echo(core.start_timeline_entry(context,
-                                         activity_id,
-                                         note))
+    ws = ctx.obj
+    typer.echo(ws.start_timeline_entry(activity_id, note))
 
 @cli_log.command()
 def stop(ctx: typer.Context):
     """
     Stop the current timeline entry.
     """
-    context = ctx.obj
-    typer.echo(core.stop_timeline_entry(context))
+    ws = ctx.obj
+    typer.echo(ws.stop_timeline_entry())
 
 @cli_log.command()
 def refresh(ctx: typer.Context, date: str = typer.Argument(None)):
     """
     Reformat the log file.
     """
-    context = ctx.obj
-    log = core.get_log_by_date(context, get_date(context, date))
-    core.write_log(context, log)
+    ws = ctx.obj
+    ws.write_log(ws.get_log(get_date(ws, date)))
     typer.echo("Log refreshed.")
 
 @cli_plan.command(name="list") # To avoid conflict with list type
@@ -150,9 +173,9 @@ def list_plans(ctx: typer.Context, date: str = typer.Argument(None)):
     """
     Show the planned activities for a given day, defaulting to today
     """
-    context = ctx.obj
+    ws = ctx.obj
 
-    plans = core.load_valid_plans_for_day(context, get_date(context, date))
+    plans = ws.get_plans(get_date(ws, date))
     for plan in plans:
         typer.echo(f"Plan: {plan.source} (valid from {plan.valid_from})")
         for activity in plan.activities:
@@ -164,11 +187,11 @@ def pull(ctx: typer.Context, date: str = typer.Argument(None)):
     """
     Pull planned activities from all sources.
     """
-    context = ctx.obj
-    plugins = core.load_plugins(context)
+    ws = ctx.obj
+    plugins = ws.load_plugins()
     jira = plugins.get('jira')().pull_plan(
-        get_date(context, date),
-        get_date(context, date), {})
+        get_date(ws, date),
+        get_date(ws, date), {})
 
     # write the plan to the plan folder:
     import toml
@@ -189,7 +212,7 @@ def pull(ctx: typer.Context, date: str = typer.Argument(None)):
 
     data = serialize_dataclass(jira)
 
-    path = context.require_faff_root() / ".faff" / "plans" / f"remote.{jira.source}.{jira.valid_from.format('YYYYMMDD')}.toml"
+    path = ws.fs.require_faff_root() / ".faff" / "plans" / f"remote.{jira.source}.{jira.valid_from.format('YYYYMMDD')}.toml"
     with path.open("w") as f:
         toml.dump(data, f)    
 
