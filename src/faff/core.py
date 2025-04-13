@@ -1,16 +1,12 @@
-import importlib
-import pendulum
 import re
 import os
-import toml
-import tomllib
 import tomlkit
-
-# FIXME: Three toml libraries is two too many.
+import pendulum
+import importlib
 
 from pathlib import Path
 from typing import List, Dict, Type, Any, Callable, Optional
-#from tomlkit import document, table, comment
+
 from abc import ABC, abstractmethod
 
 from faff.models import Plan, Log, TimeSheet, Activity
@@ -261,10 +257,7 @@ class Workspace:
 
     def __init__(self):
         self.fs = FileSystem()
-        
-        with self.fs.CONFIG_PATH.open("rb") as f:
-            toml_data = tomllib.load(f)
-            self.config = Config.from_dict(toml_data)
+        self.config = Config.from_dict(tomlkit.parse(self.fs.CONFIG_PATH.read_text()))
 
     def now(self) -> pendulum.DateTime:
         """
@@ -300,9 +293,7 @@ class Workspace:
         plans = {}
         for file in self.fs.PLAN_PATH.glob("*.toml"):
             try:
-                with file.open("rb") as f:
-                    data = tomllib.load(f)
-                    plan = Plan.from_dict(data)
+                plan = Plan.from_dict(tomlkit.parse(file.read_text()))
 
             except Exception as e:
                 # FIXME: We should say when we're skipping a malformed file.
