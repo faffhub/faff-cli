@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 from typing import Optional, List, Dict, Any
 
 import pendulum
@@ -174,3 +174,17 @@ class Config:
         plan_sources = data.get("plan_source", [])
         push_targets = data.get("push_target", [])
         return cls(timezone, plan_sources, push_targets)
+    
+
+def serialize_value(value):
+    if isinstance(value, (pendulum.DateTime, pendulum.Date)):
+        return value.to_date_string()  # or .to_iso8601_string() if datetime
+    elif isinstance(value, dict):
+        return {k: serialize_value(v) for k, v in value.items()}
+    elif isinstance(value, list):
+        return [serialize_value(v) for v in value]
+    else:
+        return value
+
+def serialize_dataclass(obj):
+    return {k: serialize_value(v) for k, v in asdict(obj).items()}

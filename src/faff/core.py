@@ -1,8 +1,12 @@
+from __future__ import annotations
+
 import re
 import os
 import tomlkit
 import pendulum
 import importlib
+
+from slugify import slugify
 
 from pathlib import Path
 from typing import List, Dict, Type, Any, Callable, Optional
@@ -11,8 +15,7 @@ from abc import ABC, abstractmethod
 
 from faff.models import Plan, Log, TimeSheet, Activity
 from faff.models import Config
-
-TIME_FORMAT_REGEX = re.compile(r"^\d+h(\d+m)?$|^\d+m$")
+from faff.models import serialize_dataclass
 
 class FileSystem:
     ROOT_NAME = ".faff"
@@ -29,10 +32,11 @@ class FileSystem:
     def __init__(self, working_dir: Path | None = None):
         self.working_dir = working_dir or Path.cwd()
 
-        self.LOG_PATH = self.require_faff_root() / ".faff" / "logs"
-        self.PLAN_PATH = self.require_faff_root() / ".faff" / "plans"
-        self.PLUGIN_PATH = self.require_faff_root() / ".faff" / "plugins"
-        self.CONFIG_PATH = self.require_faff_root() / ".faff" / "config.toml"
+        self.FAFF_ROOT = self.find_faff_root()
+        self.LOG_PATH = self.FAFF_ROOT / ".faff" / "logs"
+        self.PLAN_PATH = self.FAFF_ROOT / ".faff" / "plans"
+        self.PLUGIN_PATH = self.FAFF_ROOT / ".faff" / "plugins"
+        self.CONFIG_PATH = self.FAFF_ROOT / ".faff" / "config.toml"
 
     # FIXME: this method name is confusing
     def log_path(self, date: pendulum.Date) -> Path:
@@ -41,7 +45,7 @@ class FileSystem:
         """
         return self.LOG_PATH / f"{date.to_date_string()}.toml"
     
-    def require_faff_root(self) -> Path:
+    def find_faff_root(self) -> Path:
         """
         Search upwards from a given path for a `.faff` directory.
         Args:
@@ -50,20 +54,6 @@ class FileSystem:
             Path: The path to the directory containing `.faff`.
         Raises:
             FileNotFoundError: If no `.faff` directory is found in the path hierarchy.
-        """
-        path = self.find_faff_root()
-        if path is None:
-            raise FileNotFoundError(
-                f"No {self.ROOT_NAME} directory found from start {self.working_dir}.")
-        return path
-
-    def find_faff_root(self) -> Path | None:
-        """
-        Search upwards from a given path for a `.faff` directory.
-        Args:
-            start_path (Path): The path to start searching from.
-        Returns:
-            Path | None: The path to the directory containing `.faff`, or None if not found.
         """
         possible_root = self.working_dir
 
@@ -79,7 +69,8 @@ class FileSystem:
                 next_possible_root = \
                     Path(possible_root).parent.absolute()
                 if next_possible_root == possible_root:
-                    return None
+                    raise FileNotFoundError(
+                        f"No {self.ROOT_NAME} directory found from start {self.working_dir}.")
                 else:
                     possible_root = next_possible_root
 
@@ -87,7 +78,12 @@ class FileSystem:
         """
         Initialise a new `.faff` directory in the current working directory.
         """
-        already_initialised = self.find_faff_root()
+        try:
+            already_initialised = self.find_faff_root()
+        except FileNotFoundError:
+            # We're actually expecting there not to be a faff root in this case.
+            already_initialised = None
+
         if already_initialised:
             raise FileExistsError(
                 f"Directory {already_initialised} already contains a {self.ROOT_NAME} directory.")  # noqa
@@ -153,7 +149,8 @@ class LogFormatter:
 
         # Add timeline entries
         timeline_array = []
-        for entry in log.timeline:
+
+        for entry in sorted(log.timeline, key=lambda entry: entry.start):
             activity = activities.get(entry.activity.id)
             timeline_entry = tomlkit.table()
             timeline_entry["activity"] = entry.activity.id
@@ -172,7 +169,12 @@ class LogFormatter:
             if entry.note:
                 timeline_entry["note"] = entry.note
             timeline_array.append(timeline_entry)
-        doc["timeline"] = timeline_array
+        
+        if len(timeline_array) > 0:
+            doc["timeline"] = timeline_array
+        else:
+            doc.add(tomlkit.nl())
+            doc.add(tomlkit.comment("Timeline is empty."))
 
         # Convert the TOML document to a string
         toml_string = doc.as_string()
@@ -366,7 +368,54 @@ class Workspace:
         
         return "No ongoing timeline entries found to stop."
 
-    def load_plugins(self) -> Dict[str, Type]:
+    def plan_sources(self):
+        """
+        Returns the configured plan sources
+        """
+        plugins = self._load_plugins()
+        configured_sources = self.config.plan_sources
+
+        instances = {}
+
+        for source in configured_sources:
+            plugin_str = source.get("plugin")
+            Plugin = plugins.get(plugin_str)
+            if not Plugin:
+                raise ValueError(
+                    f"Plugin {plugin_str} not found in configuration.")
+            if not issubclass(Plugin, PullPlugin):
+                raise ValueError(
+                    f"Plugin {plugin_str} is not a PullPlugin.")
+            if source.get('name') in instances.keys():
+                raise ValueError(
+                    f"Duplicate source name {source.get('name')} found in configuration.")
+            instances[source.name] = Plugin(plugin=source.get("plugin"),
+                                            name=source.get("name"),
+                                            config=source.get("config"))
+
+        return instances
+
+    def write_plan(self, pull_plugin: PullPlugin, date: pendulum.Date) -> None:
+        """
+        Writes the plan for the given date.
+        """
+        plan = pull_plugin.pull_plan(date)
+
+        path = self.fs.PLAN_PATH / pull_plugin.filename(date)
+        print(plan)
+
+        def remove_none(obj):
+            if isinstance(obj, dict):
+                return {k: remove_none(v) for k, v in obj.items() if v is not None}
+            elif isinstance(obj, list):
+                return [remove_none(v) for v in obj]
+            else:
+                return obj
+
+        
+        path.write_text(tomlkit.dumps(remove_none(serialize_dataclass(plan))))
+
+    def _load_plugins(self) -> Dict[str, Type]:
         plugins = {}
 
         for plugin_file in self.fs.PLUGIN_PATH.glob("*.py"):
@@ -388,10 +437,38 @@ class Workspace:
         return plugins
 
 
-class PullPlugin(ABC):
+class Plugin(ABC):
+    pass
+
+
+class PullPlugin(Plugin):
+    def __init__(self, plugin: str, name: str, config: Dict[str, Any]):
+        """
+        Initialize the PullPlugin with configuration.
+
+        Args:
+            config (Dict[str, Any]): Configuration specific to the source.
+        """
+        self.plugin = plugin
+        self.name = name
+        self.config = config
+
+    def filename(self, date: pendulum.Date) -> str:
+        """
+        Returns the filename for the plan file.
+
+        Args:
+            date (pendulum.Date): The date for which the plan is valid.
+
+        Returns:
+            str: The filename for the plan file.
+        """
+        slug = slugify(self.name)
+        date_str = date.format("YYYYMMDD")
+        return f"remote.{slug}.{date_str}.toml"
+
     @abstractmethod
-    def pull_plan(self, start: pendulum.Date, end: pendulum.Date, 
-                  config: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def pull_plan(self, date: pendulum.Date) -> List[Dict[str, Any]]:
         """
         Fetches activities for a given day.
 
@@ -404,7 +481,7 @@ class PullPlugin(ABC):
         pass
 
 
-class PushPlugin(ABC):
+class PushPlugin(Plugin):
     @abstractmethod
     def push_timesheet(self, config: Dict[str, Any], timesheet: Dict[str, Any]) -> None:
         """
@@ -417,7 +494,7 @@ class PushPlugin(ABC):
         pass
 
 
-class CompilePlugin(ABC):
+class CompilePlugin(Plugin):
     @abstractmethod
     def compile_time_sheet(self, log: Log) -> TimeSheet:
         """

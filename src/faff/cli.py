@@ -6,16 +6,19 @@ import os
 from pathlib import Path
 
 from faff.core import Workspace
+from faff.core import LogFormatter
 from faff.core import PullPlugin, PushPlugin, CompilePlugin
 
 cli = typer.Typer()
 
 cli_log = typer.Typer(help="Edit or append to the log")
-cli_plan = typer.Typer(help="Configure, pull, and view plan(s)")
+cli_plan = typer.Typer(help="View plan(s)")
+cli_source = typer.Typer(help="View and pull plans from source(s)")
 cli_report = typer.Typer(help="Generate, sign, and push reports(s)")
 
 cli.add_typer(cli_log, name="log")
 cli.add_typer(cli_plan, name="plan")
+cli.add_typer(cli_source, name="source")
 cli.add_typer(cli_report, name="report")
 
 """
@@ -24,9 +27,10 @@ Design considerations:
 - Expected usage:
     faff init
     faff status
-    faff plan add remote
-    faff plan pull
+    faff source list
+    faff source pull
     faff plan list
+    faff log
     faff log edit
     faff log edit <date>
     faff log start <UUID> "Notes"
@@ -97,7 +101,8 @@ def status(ctx: typer.Context):
     for plan in todays_plans:
         typer.echo(f"- {plan.source} (valid from {plan.valid_from})")
 
-    plugins = ws.load_plugins()
+    # FIXME: don't use this private method
+    plugins = ws._load_plugins()
     if len(plugins) == 1:
         typer.echo(f"There is 1 connector plugin installed:")
     else:
@@ -114,6 +119,18 @@ def status(ctx: typer.Context):
         typer.echo(f"- {plugin_name} ({', '.join(types)})")
 
     log = ws.get_log(ws.today())
+
+    total_recorded_time = pendulum.duration(0)
+    for entry in log.timeline:
+        if entry.end is None:
+            duration = ws.now() - entry.start
+        else:
+            duration = entry.end - entry.start
+
+        total_recorded_time += duration
+
+    typer.echo(f"Total recorded time for today: {total_recorded_time.in_words()}")
+
     active_timeline_entry = log.active_timeline_entry()
 
     if active_timeline_entry:
@@ -135,12 +152,27 @@ def get_date(workspace: Workspace, date: str = None) -> pendulum.Date:
     else:
         return workspace.today()
 
+@cli_log.callback(invoke_without_command=True)
+def log_callback(ctx: typer.Context):
+    """
+    Show the log for today.
+    """
+    if ctx.invoked_subcommand is None:
+        ws = ctx.obj
+        log = ws.get_log(ws.today())
+        if log:
+            typer.echo(LogFormatter.format_log(log, ws.get_activities(log.date)))
+        else:
+            typer.echo("No log found for today.")
+
 
 @cli_log.command()
 def edit(ctx: typer.Context, date: str = typer.Argument(None)):
     """Log your activities for the day by opening a file in your preferred editor."""
     ws = ctx.obj
+    ws.write_log(ws.get_log(get_date(ws, date)))
     edit_file(ws.fs.log_path(get_date(ws, date)))
+    ws.write_log(ws.get_log(get_date(ws, date)))
 
 
 @cli_log.command()
@@ -181,43 +213,29 @@ def list_plans(ctx: typer.Context, date: str = typer.Argument(None)):
         for activity in plan.activities:
             typer.echo(f"- {activity.id}: {activity.name}")
 
+@cli_source.command(name="list") # To avoid conflict with list type
+def list_sources(ctx: typer.Context):
+    """
+    Show the available sources.
+    """
+    ws = ctx.obj
+    plugins = ws.plan_sources()
+    if len(plugins) == 1:
+        typer.echo(f"There is 1 plan source configured:")
+    else:
+        typer.echo(f"There are {len(plugins)} plan sources configured:")
+    for plugin_name, plugin in plugins.items():
+        typer.echo(f"- {plugin_name} ({plugin.__class__.__name__})")
 
-@cli_plan.command()
+@cli_source.command()
 def pull(ctx: typer.Context, date: str = typer.Argument(None)):
     """
     Pull planned activities from all sources.
     """
     ws = ctx.obj
-    plugins = ws.load_plugins()
-    jira = plugins.get('jira')().pull_plan(
-        get_date(ws, date),
-        get_date(ws, date), {})
-
-    # write the plan to the plan folder:
-    import toml
-    import dataclasses
-
-    def serialize_value(value):
-        if isinstance(value, (pendulum.DateTime, pendulum.Date)):
-            return value.to_date_string()  # or .to_iso8601_string() if datetime
-        elif isinstance(value, dict):
-            return {k: serialize_value(v) for k, v in value.items()}
-        elif isinstance(value, list):
-            return [serialize_value(v) for v in value]
-        else:
-            return value
-
-    def serialize_dataclass(obj):
-        return {k: serialize_value(v) for k, v in dataclasses.asdict(obj).items()}
-
-    data = serialize_dataclass(jira)
-
-    path = ws.fs.require_faff_root() / ".faff" / "plans" / f"remote.{jira.source}.{jira.valid_from.format('YYYYMMDD')}.toml"
-    with path.open("w") as f:
-        toml.dump(data, f)    
-
-    typer.echo(f"Pulled plan from {jira.source} and saved to {path}")
-
+    plugins = ws.plan_sources()
+    for plugin in plugins.values():
+        ws.write_plan(plugin, ws.today())
 
 if __name__ == "__main__":
     cli()
