@@ -14,12 +14,14 @@ cli = typer.Typer()
 cli_log = typer.Typer(help="Edit or append to the log")
 cli_plan = typer.Typer(help="View plan(s)")
 cli_source = typer.Typer(help="View and pull plans from source(s)")
+cli_plugins = typer.Typer(help="View and manage plugins")
 cli_report = typer.Typer(help="Generate, sign, and push reports(s)")
 
 cli.add_typer(cli_log, name="log")
 cli.add_typer(cli_plan, name="plan")
 cli.add_typer(cli_source, name="source")
 cli.add_typer(cli_report, name="report")
+cli.add_typer(cli_plugins, name="plugins")
 
 """
 Design considerations:
@@ -101,23 +103,6 @@ def status(ctx: typer.Context):
     for plan in todays_plans:
         typer.echo(f"- {plan.source} (valid from {plan.valid_from})")
 
-    # FIXME: don't use this private method
-    plugins = ws._load_plugins()
-    if len(plugins) == 1:
-        typer.echo(f"There is 1 connector plugin installed:")
-    else:
-        typer.echo(f"There are {len(plugins)} connector plugins installed:")
-
-    for plugin_name, plugin in plugins.items():
-        types = []
-        if issubclass(plugin, PullPlugin):
-            types.append("pull")
-        if issubclass(plugin, PushPlugin):
-            types.append("push")
-        if issubclass(plugin, CompilePlugin):
-            types.append("compile")
-        typer.echo(f"- {plugin_name} ({', '.join(types)})")
-
     log = ws.get_log(ws.today())
 
     total_recorded_time = pendulum.duration(0)
@@ -128,8 +113,6 @@ def status(ctx: typer.Context):
             duration = entry.end - entry.start
 
         total_recorded_time += duration
-
-    typer.echo(f"Total recorded time for today: {total_recorded_time.in_words()}")
 
     active_timeline_entry = log.active_timeline_entry()
 
@@ -151,6 +134,27 @@ def get_date(workspace: Workspace, date: str = None) -> pendulum.Date:
         return pendulum.parse(date).date()
     else:
         return workspace.today()
+
+@cli_plugins.command(name="list") # To avoid conflict with list type
+def list_plugins(ctx: typer.Context):
+    ws = ctx.obj
+    # FIXME: don't use this private method
+    plugins = ws._load_plugins()
+    if len(plugins) == 1:
+        typer.echo(f"There is 1 connector plugin installed:")
+    else:
+        typer.echo(f"There are {len(plugins)} connector plugins installed:")
+
+    for plugin_name, plugin in plugins.items():
+        types = []
+        if issubclass(plugin, PullPlugin):
+            types.append("pull")
+        if issubclass(plugin, PushPlugin):
+            types.append("push")
+        if issubclass(plugin, CompilePlugin):
+            types.append("compile")
+        typer.echo(f"- {plugin_name} ({', '.join(types)})")
+
 
 @cli_log.callback(invoke_without_command=True)
 def log_callback(ctx: typer.Context):
