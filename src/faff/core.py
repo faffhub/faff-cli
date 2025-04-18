@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import re
 import os
-import tomlkit
+import tomllib # We need this for fast loads.
+import tomlkit # We need this for control over fancy human-readable writes.
 import pendulum
 import importlib
 
@@ -294,12 +295,7 @@ class Workspace:
         """
         plans = {}
         for file in self.fs.PLAN_PATH.glob("*.toml"):
-            try:
-                plan = Plan.from_dict(tomlkit.parse(file.read_text()))
-
-            except Exception as e:
-                # FIXME: We should say when we're skipping a malformed file.
-                continue
+            plan = Plan.from_dict(tomllib.loads(file.read_text()))
 
             if plan.valid_from and plan.valid_from > date:
                 continue
@@ -374,7 +370,6 @@ class Workspace:
         """
         plugins = self._load_plugins()
         configured_sources = self.config.plan_sources
-
         instances = {}
 
         for source in configured_sources:
@@ -389,9 +384,9 @@ class Workspace:
             if source.get('name') in instances.keys():
                 raise ValueError(
                     f"Duplicate source name {source.get('name')} found in configuration.")
-            instances[source.name] = Plugin(plugin=source.get("plugin"),
-                                            name=source.get("name"),
-                                            config=source.get("config"))
+            instances[source.get('name')] = Plugin(plugin=source.get("plugin"),
+                                                   name=source.get("name"),
+                                                   config=source.get("config"))
 
         return instances
 
@@ -402,18 +397,8 @@ class Workspace:
         plan = pull_plugin.pull_plan(date)
 
         path = self.fs.PLAN_PATH / pull_plugin.filename(date)
-        print(plan)
 
-        def remove_none(obj):
-            if isinstance(obj, dict):
-                return {k: remove_none(v) for k, v in obj.items() if v is not None}
-            elif isinstance(obj, list):
-                return [remove_none(v) for v in obj]
-            else:
-                return obj
-
-        
-        path.write_text(tomlkit.dumps(remove_none(serialize_dataclass(plan))))
+        path.write_text(self._serialize_dataclass(plan))
 
     def _load_plugins(self) -> Dict[str, Type]:
         plugins = {}
@@ -435,6 +420,37 @@ class Workspace:
                     plugins[plugin_file.stem] = attr  # Store the class
 
         return plugins
+
+    def _serialize_dataclass(self, obj):
+        """
+        Serializes a dataclass to a TOML string.
+        This function handles nested dataclasses, lists, and dictionaries, and smells _ghastly_.
+        XXX: Don't think about putting me in models.py though - models shouldn't worry about their
+        representation as anything other than a pure dict.
+        """
+        from dataclasses import asdict
+
+        def serialize_value(value):
+            if isinstance(value, (pendulum.DateTime, pendulum.Date)):
+                return value.to_date_string()
+            elif isinstance(value, dict):
+                return {k: serialize_value(v) for k, v in value.items()}
+            elif isinstance(value, list):
+                return [serialize_value(v) for v in value]
+            else:
+                return value
+            
+        def remove_none(obj):
+            if isinstance(obj, dict):
+                return {k: remove_none(v) for k, v in obj.items() if v is not None}
+            elif isinstance(obj, list):
+                return [remove_none(v) for v in obj]
+            else:
+                return obj
+            
+        return tomlkit.dumps(
+            remove_none(
+                {k: serialize_value(v) for k, v in asdict(obj).items()}))
 
 
 class Plugin(ABC):

@@ -1,79 +1,56 @@
 import pendulum
 import requests
-from typing import Dict, List, Any
-from requests.auth import HTTPBasicAuth
 
 from faff.core import PullPlugin
 from faff.models import Plan, Activity
 
-class JiraConnector(PullPlugin):
+class MyHoursPlugin(PullPlugin):
 
     def pull_plan(self, date: pendulum.Date) -> Plan:
-        jira_base_url = self.config.get('url')
-        jira_email = self.config.get('email')
-        jira_token = self.config.get('api_token')
+        myhours_url = "https://api2.myhours.com/api/Projects"
+        myhours_email = self.config.get('email')
+        myhours_token = self.config.get('token')
 
-        auth = HTTPBasicAuth(jira_email, jira_token)
+        headers = {"Authorization": f"Bearer { myhours_token }"}
 
-        # Fetch Jira issues
-        issues = self.fetch_jira_issues(jira_base_url, jira_email, auth, pendulum.today(),
-                                        pendulum.tomorrow())
+        # Step 2: Fetch projects
+        projects_resp = requests.get("https://api2.myhours.com/api/projects", headers=headers)
+        projects_resp.raise_for_status()
+        projects = projects_resp.json()
 
-        activities = [Activity(id=f"jira-element-{issue.get('key')}",
-                               name=issue.get('fields', {}).get('summary'))
-                      for issue in issues]
-        return Plan(source="jira",
-                    valid_from=date,
-                    valid_until=date,
-                    activities=activities)
+        activities = []
+        for project in projects:
+            print("p")
+            tasks_resp = requests.get(f"https://api2.myhours.com/api/projects/{project['id']}/tasklist", headers=headers)
+            tasks_resp.raise_for_status()
+            tasklist = tasks_resp.json()
 
-    def build_jql_assigned_during(self, username: str, start, end) -> str:
-        """
-        Build a JQL query string for issues where a user was assignee during a date range.
-        
-        Args:
-            username (str): Jira username/login (usually email).
-            start (datetime/date): Inclusive start date.
-            end (datetime/date): Exclusive end date.
-        
-        Returns:
-            str: JQL query string.
-        """
-        start_str = pendulum.instance(start).format("YYYY/MM/DD")
-        end_str = pendulum.instance(end).format("YYYY/MM/DD")
-        
-        return f'assignee was "{username}" AND status was "in progress" DURING ("{start_str}", "{end_str}")'
+            def collect_tasks(bucket: str):
+                return tasklist[0].get(bucket, []) if tasklist else []
 
+            all_tasks = (
+                collect_tasks("incompletedTasks") +
+                collect_tasks("completedTasks") +
+                collect_tasks("archivedTasks")
+            )
 
-    def fetch_jira_issues(self, base_url, jira_email, auth,
-                          start_date, end_date, max_results=1000):
-        """Fetch issues from a Jira project."""
-        url = f"{base_url}/rest/api/2/search"
+            for task in all_tasks:
+                print("t")
+                activities.append(Activity(
+                    id=f"myhours-{task['id']}",
+                    name=f"{project['name']} → {task['name']}",
+                    meta={
+                        "project": project["name"],
+                        "project_id": project["id"],
+                        "completed": task["completed"],
+                        "archived": task["archived"],
+                        "rate": task.get("rate"),
+                    }
+                ))
 
-        # Example usage
-        jql = self.build_jql_assigned_during(jira_email, start_date, end_date)
-
-        all_issues = []
-        start_at = 0
-
-        while True:
-            query = {
-                "jql": jql,
-                "startAt": start_at,
-                "maxResults": 50,
-                "fields": "key,issuetype,summary,parent"
-            }
-
-            response = requests.get(url, params=query, auth=auth)
-            response.raise_for_status()  # Raise an error for HTTP issues
-            data = response.json()
-
-            issues = data.get("issues", [])
-            all_issues.extend(issues)
-
-            if len(issues) < 50:
-                break
-
-            start_at += 50
-
-        return all_issues
+        return Plan(
+            source="myhours",
+            valid_from=date,
+            valid_until=None,
+            activities=activities
+        )

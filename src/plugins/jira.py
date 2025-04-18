@@ -1,12 +1,11 @@
 import pendulum
 import requests
-from typing import Dict, List, Any
 from requests.auth import HTTPBasicAuth
 
 from faff.core import PullPlugin
 from faff.models import Plan, Activity
 
-class JiraConnector(PullPlugin):
+class JiraPlugin(PullPlugin):
 
     def pull_plan(self, date: pendulum.Date) -> Plan:
         jira_base_url = self.config.get('url')
