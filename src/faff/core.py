@@ -16,7 +16,6 @@ from abc import ABC, abstractmethod
 
 from faff.models import Plan, Log, TimeSheet, Activity
 from faff.models import Config
-from faff.models import serialize_dataclass
 
 class FileSystem:
     ROOT_NAME = ".faff"
@@ -25,6 +24,7 @@ class FileSystem:
             'config.toml': None,
             'plans': {},
             'plugins': {},
+            'plugin_state': {},
             'logs': {},
             'timesheets': {},
         }
@@ -37,6 +37,7 @@ class FileSystem:
         self.LOG_PATH = self.FAFF_ROOT / ".faff" / "logs"
         self.PLAN_PATH = self.FAFF_ROOT / ".faff" / "plans"
         self.PLUGIN_PATH = self.FAFF_ROOT / ".faff" / "plugins"
+        self.PLUGIN_STATE_PATH = self.FAFF_ROOT / ".faff" / "plugin_state"
         self.CONFIG_PATH = self.FAFF_ROOT / ".faff" / "config.toml"
 
     # FIXME: this method name is confusing
@@ -113,6 +114,47 @@ class FileSystem:
                 if not os.path.exists(path):
                     with open(path, "w") as f:
                         pass
+
+
+class TomlSerializer:
+
+    @classmethod
+    def serialize(cls, obj: Any) -> str:
+        """
+        Serializes a dataclass to a TOML string.
+        This function handles nested dataclasses, lists, and dictionaries, and smells _ghastly_.
+        XXX: Don't think about putting me in models.py though - models shouldn't worry about their
+        representation as anything other than a pure dict.
+        """
+        from dataclasses import asdict
+
+        def serialize_value(value):
+            if isinstance(value, pendulum.DateTime):
+                return value.to_iso8601_string()
+            elif isinstance(value, pendulum.Date):
+                return value.to_date_string()
+            elif isinstance(value, dict):
+                return {k: serialize_value(v) for k, v in value.items()}
+            elif isinstance(value, list):
+                return [serialize_value(v) for v in value]
+            else:
+                return value
+            
+        def remove_none(obj):
+            if isinstance(obj, dict):
+                return {k: remove_none(v) for k, v in obj.items() if v is not None}
+            elif isinstance(obj, list):
+                return [remove_none(v) for v in obj]
+            else:
+                return obj
+
+        # If obj is a dataclass, convert it to a dict
+        if hasattr(obj, "__dataclass_fields__"):
+            obj = asdict(obj)
+
+        return tomlkit.dumps(
+            remove_none(
+                {k: serialize_value(v) for k, v in obj.items()}))
 
 
 class LogFormatter:
@@ -386,7 +428,8 @@ class Workspace:
                     f"Duplicate source name {source.get('name')} found in configuration.")
             instances[source.get('name')] = Plugin(plugin=source.get("plugin"),
                                                    name=source.get("name"),
-                                                   config=source.get("config"))
+                                                   config=source.get("config"),
+                                                   state_path=self.fs.PLUGIN_STATE_PATH / slugify(source.get("name")))
 
         return instances
 
@@ -398,7 +441,7 @@ class Workspace:
 
         path = self.fs.PLAN_PATH / pull_plugin.filename(date)
 
-        path.write_text(self._serialize_dataclass(plan))
+        path.write_text(TomlSerializer.serialize(plan))
 
     def _load_plugins(self) -> Dict[str, Type]:
         plugins = {}
@@ -421,44 +464,14 @@ class Workspace:
 
         return plugins
 
-    def _serialize_dataclass(self, obj):
-        """
-        Serializes a dataclass to a TOML string.
-        This function handles nested dataclasses, lists, and dictionaries, and smells _ghastly_.
-        XXX: Don't think about putting me in models.py though - models shouldn't worry about their
-        representation as anything other than a pure dict.
-        """
-        from dataclasses import asdict
-
-        def serialize_value(value):
-            if isinstance(value, (pendulum.DateTime, pendulum.Date)):
-                return value.to_date_string()
-            elif isinstance(value, dict):
-                return {k: serialize_value(v) for k, v in value.items()}
-            elif isinstance(value, list):
-                return [serialize_value(v) for v in value]
-            else:
-                return value
-            
-        def remove_none(obj):
-            if isinstance(obj, dict):
-                return {k: remove_none(v) for k, v in obj.items() if v is not None}
-            elif isinstance(obj, list):
-                return [remove_none(v) for v in obj]
-            else:
-                return obj
-            
-        return tomlkit.dumps(
-            remove_none(
-                {k: serialize_value(v) for k, v in asdict(obj).items()}))
 
 
 class Plugin(ABC):
     pass
 
-
 class PullPlugin(Plugin):
-    def __init__(self, plugin: str, name: str, config: Dict[str, Any]):
+    def __init__(self, plugin: str, name: str,
+                 config: Dict[str, Any], state_path: Path):
         """
         Initialize the PullPlugin with configuration.
 
@@ -467,6 +480,10 @@ class PullPlugin(Plugin):
         """
         self.plugin = plugin
         self.name = name
+        self.state_path = state_path
+        self.state_path.mkdir(parents=False, exist_ok=True)
+
+        self.slug = slugify(self.name)
         self.config = config
 
     def filename(self, date: pendulum.Date) -> str:
@@ -479,9 +496,8 @@ class PullPlugin(Plugin):
         Returns:
             str: The filename for the plan file.
         """
-        slug = slugify(self.name)
         date_str = date.format("YYYYMMDD")
-        return f"remote.{slug}.{date_str}.toml"
+        return f"remote.{self.slug}.{date_str}.toml"
 
     @abstractmethod
     def pull_plan(self, date: pendulum.Date) -> List[Dict[str, Any]]:
