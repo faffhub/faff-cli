@@ -69,6 +69,7 @@ def main(ctx: typer.Context):
 @cli.command()
 def init(ctx: typer.Context):
     """
+    cli: faff init
     Initialise faff obj.
     """
     ws = ctx.obj
@@ -81,6 +82,7 @@ def init(ctx: typer.Context):
 @cli.command()
 def config(ctx: typer.Context):
     """
+    cli: faff config
     Edit the faff configuration in your preferred editor.
     """
     ws = ctx.obj
@@ -89,6 +91,7 @@ def config(ctx: typer.Context):
 @cli.command()
 def status(ctx: typer.Context):
     """
+    cli: faff status
     Show the status of the faff repository.
     """
     ws = ctx.obj
@@ -137,6 +140,9 @@ def get_date(workspace: Workspace, date: str = None) -> pendulum.Date:
 
 @cli_plugins.command(name="list") # To avoid conflict with list type
 def list_plugins(ctx: typer.Context):
+    """
+    cli: faff list plugins
+    """
     ws = ctx.obj
     # FIXME: don't use this private method
     plugins = ws._load_plugins()
@@ -194,6 +200,18 @@ def stop(ctx: typer.Context):
     """
     ws = ctx.obj
     typer.echo(ws.stop_timeline_entry())
+
+@cli_log.command()
+def compile(ctx: typer.Context):
+    ws = ctx.obj
+    compilers = ws.compilers()
+    # Get today's log and compile it
+    log = ws.get_log(get_date(ws, None))
+
+    compiler = next(iter(compilers.values()))
+    print(compiler)
+    print(compiler.compile_time_sheet(log))
+
 
 @cli_log.command()
 def refresh(ctx: typer.Context, date: str = typer.Argument(None)):

@@ -302,7 +302,7 @@ class Workspace:
 
     def __init__(self):
         self.fs = FileSystem()
-        self.config = Config.from_dict(tomlkit.parse(self.fs.CONFIG_PATH.read_text()))
+        self.config = Config.from_dict(tomllib.loads(self.fs.CONFIG_PATH.read_text()))
 
     def now(self) -> pendulum.DateTime:
         """
@@ -406,32 +406,41 @@ class Workspace:
         
         return "No ongoing timeline entries found to stop."
 
-    def plan_sources(self):
-        """
-        Returns the configured plan sources
-        """
+    def _plugin_instances(self, cls, configs):
         plugins = self._load_plugins()
-        configured_sources = self.config.plan_sources
         instances = {}
 
-        for source in configured_sources:
-            plugin_str = source.get("plugin")
+        for plugin_config in configs:
+            plugin_str = plugin_config.get("plugin")
             Plugin = plugins.get(plugin_str)
             if not Plugin:
                 raise ValueError(
                     f"Plugin {plugin_str} not found in configuration.")
-            if not issubclass(Plugin, PullPlugin):
+            if not issubclass(Plugin, cls):
                 raise ValueError(
-                    f"Plugin {plugin_str} is not a PullPlugin.")
-            if source.get('name') in instances.keys():
+                    f"Plugin {plugin_str} is not an {cls}.")
+            if plugin_config.get('name') in instances.keys():
                 raise ValueError(
-                    f"Duplicate source name {source.get('name')} found in configuration.")
-            instances[source.get('name')] = Plugin(plugin=source.get("plugin"),
-                                                   name=source.get("name"),
-                                                   config=source.get("config"),
-                                                   state_path=self.fs.PLUGIN_STATE_PATH / slugify(source.get("name")))
+                    f"Duplicate source name {plugin_config.get('name')} found in configuration.")
+            instances[plugin_config.get('name')] = Plugin(plugin=plugin_config.get("plugin"),
+                                                   name=plugin_config.get("name"),
+                                                   config=plugin_config.get("config"),
+                                                   state_path=self.fs.PLUGIN_STATE_PATH / slugify(plugin_config.get("name")))
 
         return instances
+
+    def compilers(self):
+        """
+        Returns the configured compilers
+        """
+        # FIXME: This duplication still feels gross
+        return self._plugin_instances(CompilePlugin, self.config.compilers)
+
+    def plan_sources(self):
+        """
+        Returns the configured plan sources
+        """
+        return self._plugin_instances(PullPlugin, self.config.plan_sources)
 
     def write_plan(self, pull_plugin: PullPlugin, date: pendulum.Date) -> None:
         """
@@ -458,18 +467,14 @@ class Workspace:
             for attr_name in dir(module):
                 attr = getattr(module, attr_name)
                 if isinstance(attr, type) and (
-                    issubclass(attr, PullPlugin) or issubclass(attr, PushPlugin)
+                    issubclass(attr, (PullPlugin, PushPlugin, CompilePlugin))
                 ) and attr not in (PullPlugin, PushPlugin):
                     plugins[plugin_file.stem] = attr  # Store the class
 
         return plugins
 
 
-
 class Plugin(ABC):
-    pass
-
-class PullPlugin(Plugin):
     def __init__(self, plugin: str, name: str,
                  config: Dict[str, Any], state_path: Path):
         """
@@ -486,6 +491,7 @@ class PullPlugin(Plugin):
         self.slug = slugify(self.name)
         self.config = config
 
+class PullPlugin(Plugin):
     def filename(self, date: pendulum.Date) -> str:
         """
         Returns the filename for the plan file.
@@ -537,19 +543,5 @@ class CompilePlugin(Plugin):
 
         Returns:
             str: The generated report.
-        """
-        pass
-
-    @abstractmethod
-    def sign_timesheet(self, timesheet: TimeSheet, signature: str) -> TimeSheet:
-        """
-        Returns a signed version of the timesheet.
-
-        Args:
-            timesheet (TimeSheet): The timesheet to sign.
-            signature (str): The signature to add.
-
-        Returns:
-            TimeSheet: The signed timesheet.
         """
         pass

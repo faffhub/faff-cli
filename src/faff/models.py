@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field 
 from typing import Optional, List, Dict, Any
 
 import pendulum
@@ -163,6 +163,7 @@ class Config:
     """Configuration for the faff CLI. This object includes the default values for the CLI."""
     timezone: pendulum.Timezone = pendulum.now().timezone
     plan_sources: List[Dict[str, Any]] = field(default_factory=list)
+    compilers: List[Dict[str, Any]] = field(default_factory=list)
     push_targets: List[Dict[str, Any]] = field(default_factory=list)
 
     @classmethod
@@ -172,19 +173,7 @@ class Config:
         else:
             timezone = pendulum.now().timezone
         plan_sources = data.get("plan_source", [])
+        compilers = data.get("compiler", [])
         push_targets = data.get("push_target", [])
-        return cls(timezone, plan_sources, push_targets)
+        return cls(timezone, plan_sources, compilers, push_targets)
     
-
-def serialize_value(value):
-    if isinstance(value, (pendulum.DateTime, pendulum.Date)):
-        return value.to_date_string()  # or .to_iso8601_string() if datetime
-    elif isinstance(value, dict):
-        return {k: serialize_value(v) for k, v in value.items()}
-    elif isinstance(value, list):
-        return [serialize_value(v) for v in value]
-    else:
-        return value
-
-def serialize_dataclass(obj):
-    return {k: serialize_value(v) for k, v in asdict(obj).items()}
