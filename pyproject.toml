@@ -12,7 +12,7 @@ dependencies = [
 ]
 
 [project.scripts]
-faff = "faff.cli:cli"
+faff = "faff.cli.main:cli"
 
 [tool.setuptools.packages.find]
 where = ["src"]

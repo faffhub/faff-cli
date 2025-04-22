@@ -297,8 +297,6 @@ class LogFormatter:
 
 
 class Workspace:
-    """
-    """
 
     def __init__(self):
         self.fs = FileSystem()
@@ -315,7 +313,16 @@ class Workspace:
         """
         Get today's date.
         """
-        return pendulum.today().date()   
+        return pendulum.today().date()
+    
+    def parse_date(self, date: str) -> pendulum.Date:
+        """
+        Parse a date string into a pendulum.Date object.
+        """
+        try:
+            return pendulum.parse(date).date()
+        except ValueError:
+            raise ValueError(f"Invalid date format: {date}. Expected YYYY-MM-DD.")
 
     def get_activities(self, date: pendulum.Date) -> List[Activity]:
         """

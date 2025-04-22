@@ -147,6 +147,18 @@ class Log:
             summary=self.summary,
             timeline=self.timeline[:-1] + [stopped_entry]
         )
+    
+    def total_recorded_time(self) -> pendulum.Duration:
+        total_recorded_time = pendulum.duration(0)
+        for entry in self.timeline:
+            if entry.end is None:
+                duration = pendulum.now(self.timezone) - entry.start
+            else:
+                duration = entry.end - entry.start
+
+            total_recorded_time += duration
+
+        return total_recorded_time
 
 @dataclass(frozen=True)
 class TimeSheet():
