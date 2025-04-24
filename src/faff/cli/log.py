@@ -13,7 +13,7 @@ faff log refresh
 """
 
 @app.callback(invoke_without_command=True)
-def log_callback(ctx: typer.Context):
+def log(ctx: typer.Context):
     """
     cli: faff log
     Show the log for today.
