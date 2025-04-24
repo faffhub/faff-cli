@@ -1,5 +1,5 @@
 import pendulum
-import tomlkit
+import tomli_w
 
 
 from typing import Any
@@ -41,6 +41,6 @@ class TomlSerializer:
         if hasattr(obj, "__dataclass_fields__"):
             obj = asdict(obj)
 
-        return tomlkit.dumps(
+        return tomli_w.dumps(
             remove_none(
                 {k: serialize_value(v) for k, v in obj.items()}))
