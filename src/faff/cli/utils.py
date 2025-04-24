@@ -10,13 +10,22 @@ def edit_file(path: Path) -> bool:
     """
     editor = os.getenv("EDITOR", "vim") # Default to vim if $EDITOR is not set
 
-    pre_edit_hash = path.read_text().__hash__()
+    pre_edit = path.read_text()
+    # pre_edit_hash = path.read_text().__hash__()
+
     # Open the file in the editor
     try:
         subprocess.run([editor, str(path)], check=True)
     except FileNotFoundError:
         return
 
-    post_edit_hash = path.read_text().__hash__()
+    post_edit = path.read_text()
+    # post_edit_hash = path.read_text().__hash__()
 
-    return pre_edit_hash != post_edit_hash
+    # You'd expect us to use the hash here, but the default edtior
+    # vim whacks a newline on the end of the file upon save.
+    # Following the principle of least surprise, I want to tell the user
+    # when it the file has _semantically_ changed, so I'm going to ignore
+    # newline and compare the text.
+
+    return pre_edit.strip() != post_edit.strip()
