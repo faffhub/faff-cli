@@ -64,6 +64,31 @@ class FileSystem:
                 else:
                     possible_root = next_possible_root
 
+    # FIXME: This is a candidate for deletion. 
+    def plan_files(self, date: pendulum.Date) -> list[Path]:
+        import re
+        PLAN_FILENAME_PATTERN = re.compile(r"(?P<source>.+?)\.(?P<datestr>\d{8})\.toml")
+
+        candidates = {}
+
+        for file in self.PLAN_PATH.glob("*.toml"):
+            match = PLAN_FILENAME_PATTERN.match(file.name)
+            source = match.group("source")
+            try:
+                file_date = pendulum.parse(match.group("datestr"), strict=True).date()
+                if file_date > date:
+                    print("continue")
+                    continue
+                if source not in candidates:
+                    candidates[source] = file_date
+                elif file_date > candidates.get(source):
+                    candidates[source] = file_date
+            except Exception:
+                pass
+
+        return [self.PLAN_PATH / Path(f'{source}.{date.format("YYYYMMDD")}.toml')
+                for source, date in candidates.items()]
+
     def initialise_repo(self) -> None:
         """
         Initialise a new `.faff` directory in the current working directory.
