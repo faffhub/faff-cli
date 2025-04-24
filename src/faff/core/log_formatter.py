@@ -1,78 +1,52 @@
 from faff.models import Activity, Log
 
-
 import pendulum
 import tomlkit
 
-
 import re
 from typing import List
-
 
 class LogFormatter:
 
     @classmethod
     def format_log(cls, log: Log, activities: List[Activity]) -> str:
-        doc = tomlkit.document()
-        doc.add(tomlkit.comment("This is a Faff-format log file - see faffage.com for details."))
-        doc.add(tomlkit.comment("It has been generated but can be edited manually."))
-        doc.add(tomlkit.comment("Changes to rows starting with '#' will not be saved."))
+        formatted_log = []
+        formatted_log.append("# This is a Faff-format log file - see faffage.com for details.")
+        formatted_log.append("# It has been generated but can be edited manually.")
+        formatted_log.append("# Changes to rows starting with '#' will not be saved.")
 
         # Add log data
-        doc["date"] = log.date.to_date_string()
-        doc["timezone"] = str(log.timezone)
+        formatted_log.append("version = \"1.0\"")
+        formatted_log.append(f'date = "{ log.date.to_date_string()}"')
+        formatted_log.append(f'timezone = "{str(log.timezone)}"')
 
-        doc["--date_format"] = cls._get_datetime_format(log.date, log.timezone)
+        formatted_log.append(f'--date_format = "{cls._get_datetime_format(log.date, log.timezone)}"')
+
+        # FIXME: Summaries are not addressed here at all
 
         # Add summary entries
-        summary_array = []
-        for entry in log.summary:
-            activity = activities.get(entry.activity.id)
-            summary_entry = tomlkit.table()
-            summary_entry["activity"] = entry.activity.id
-            if activity.project:
-                summary_entry["--project"] = activity.project
-            if activity.name:
-                summary_entry["--name"] = activity.name
-            summary_entry["duration"] = entry.duration
-            if entry.note:
-                summary_entry["note"] = entry.note
-            summary_array.append(summary_entry)
-
-        if len(summary_array) > 0:
-            doc["summary"] = summary_array
-
-        # Add timeline entries
-        timeline_array = []
-
         for entry in sorted(log.timeline, key=lambda entry: entry.start):
             activity = activities.get(entry.activity.id)
-            timeline_entry = tomlkit.table()
-            timeline_entry["activity"] = entry.activity.id
-            if activity.project:
-                timeline_entry["--project"] = activity.project
+            formatted_log.append("")
+            formatted_log.append("[[timeline]]")
+            formatted_log.append(f'activity = "{entry.activity.id}"')
             if activity.name:
-                timeline_entry["--name"] = activity.name
-            timeline_entry["start"] = entry.start.format(
-                cls._get_datetime_format(log.date, log.timezone))
+                formatted_log.append(f'--name = "{activity.name}"')
+
+            formatted_log.append(f'start = "{entry.start.format(cls._get_datetime_format(log.date, log.timezone))}"')
             if entry.end:
-                timeline_entry["end"] = entry.end.format(
-                    cls._get_datetime_format(log.date, log.timezone))
+                formatted_log.append(f'end = "{entry.end.format(cls._get_datetime_format(log.date, log.timezone))}"')
                 interval = (entry.end - entry.start)
                 duration = pendulum.duration(seconds=interval.total_seconds())
-                timeline_entry["--duration"] = duration.in_words()
+                formatted_log.append(f'--duration = "{duration.in_words()}"')
             if entry.note:
-                timeline_entry["note"] = entry.note
-            timeline_array.append(timeline_entry)
+                formatted_log.append(f'note = "{entry.note}"')
 
-        if len(timeline_array) > 0:
-            doc["timeline"] = timeline_array
-        else:
-            doc.add(tomlkit.nl())
-            doc.add(tomlkit.comment("Timeline is empty."))
+        if len(log.timeline) == 0:
+            formatted_log.append("")
+            formatted_log.append("# Timeline is empty.")
 
-        # Convert the TOML document to a string
-        toml_string = doc.as_string()
+        toml_string = "\n".join(formatted_log)
 
         # Align the `=` signs
         processed_toml = cls.commentify_derived_values(cls.align_equals(toml_string))
