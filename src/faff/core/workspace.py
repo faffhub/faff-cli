@@ -1,3 +1,5 @@
+from functools import cache
+
 from faff.core import FileSystem, LogFormatter, TomlSerializer
 from faff.core.plugin import CompilePlugin, PullPlugin, PushPlugin
 from faff.models import Activity, Config, Log, Plan
@@ -37,6 +39,7 @@ class Workspace:
         except ValueError:
             raise ValueError(f"Invalid date format: {date}. Expected YYYY-MM-DD.")
 
+    @cache
     def get_activities(self, date: pendulum.Date) -> List[Activity]:
         """
         Returns a list of activities for the given date.
@@ -46,6 +49,7 @@ class Workspace:
                 for plan in plans
                 for activity in plan.activities}
 
+    @cache
     def get_plans(self, date: pendulum.Date) -> List[Plan]:
         """
         Loads all plans from the `.faff/plans` directory under the given root,
@@ -56,7 +60,8 @@ class Workspace:
         - and (valid_until >= target_date or valid_until is None)
         """
         plans = {}
-        for file in self.fs.PLAN_PATH.glob("*.toml"):
+        # for file in self.fs.PLAN_PATH.glob("*.toml"):
+        for file in self.fs.plan_files(date):
             plan = Plan.from_dict(tomllib.loads(file.read_text()))
 
             if plan.valid_from and plan.valid_from > date:
