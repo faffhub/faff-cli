@@ -1,5 +1,7 @@
 import typer
 
+from InquirerPy import inquirer
+
 from faff.cli import log, connection
 from faff.cli.utils import edit_file
 
@@ -78,12 +80,41 @@ def status(ctx: typer.Context):
         typer.echo("Not currently working on anything.")
 
 @cli.command()
-def start(ctx: typer.Context, activity_id: str, note: str = typer.Argument(None)):
+def start(
+    ctx: typer.Context,
+    activity_id: str = typer.Argument(None),
+    note: str = typer.Argument(None),
+):
     """
     Add an entry to today's Private Log, starting now.
     """
     ws = ctx.obj
+
+    if activity_id is None:
+        activities = ws.get_activities(ws.today())
+
+        if not activities:
+            typer.echo("No valid activities for today.")
+            raise typer.Exit(1)
+
+        choices = [
+            {"name": f"{a.name} ({a.id[:6]})", "value": a.id}
+            for a in activities.values()
+        ]
+
+        # FIXME: We should show the source plan, too.
+        activity_id = inquirer.fuzzy(
+            message="Select an activity to start:",
+            choices=choices,
+        ).execute()
+
+        if note is None:
+            note = inquirer.text(message="Optional note:").execute()
+
     typer.echo(ws.start_timeline_entry(activity_id, note))
+
+    #ws = ctx.obj
+    #typer.echo(ws.start_timeline_entry(activity_id, note))
 
 @cli.command()
 def stop(ctx: typer.Context):
