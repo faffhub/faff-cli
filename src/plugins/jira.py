@@ -2,7 +2,7 @@ import pendulum
 import requests
 from requests.auth import HTTPBasicAuth
 
-from faff.core import PullPlugin
+from faff.core.plugin import PullPlugin
 from faff.models import Plan, Activity
 
 class JiraPlugin(PullPlugin):

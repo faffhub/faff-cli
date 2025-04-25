@@ -3,7 +3,7 @@ from getpass import getpass # XXX: Maybe this too
 import pendulum
 import requests
 
-from faff.core import PullPlugin
+from faff.core.plugin import PullPlugin
 from faff.core import TomlSerializer
 from faff.models import Plan, Activity
 

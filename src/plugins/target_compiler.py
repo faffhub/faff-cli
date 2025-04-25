@@ -1,4 +1,4 @@
-from faff.core import CompilePlugin
+from faff.core.plugin import CompilePlugin
 from faff.models import TimeSheet, Log
 
 class TargetCompiler(CompilePlugin):
@@ -10,7 +10,7 @@ class TargetCompiler(CompilePlugin):
     """
 
     def compile_time_sheet(self, log: Log) -> TimeSheet:
-        activities = filter(log.activities)
+        activities = filter(log.timeline)
 
         target = self.config.get("target")
 

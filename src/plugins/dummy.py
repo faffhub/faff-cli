@@ -1,4 +1,4 @@
-from faff.core import PullPlugin, PushPlugin
+from faff.core.plugin import PullPlugin, PushPlugin
 import pendulum
 from typing import Dict, List, Any
 
