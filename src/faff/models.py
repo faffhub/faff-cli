@@ -17,7 +17,6 @@ class Activity:
     """An activity you can log time against."""
     id: str  # Globally unique identifier, e.g., "project:feature" or UUID
     name: str  # Human-readable label
-    project: Optional[str] = None
     meta: Dict[str, str] = field(default_factory=dict)  # Optional extra info
 
     @classmethod
@@ -25,10 +24,9 @@ class Activity:
         return cls(
             id=data.get("id"),
             name=data.get("name"),
-            project=data.get("project"),
             meta=data.get("meta", {})
         )
-
+    
 @dataclass(frozen=True)
 class Plan:
     """A collection of activities valid for a period of time."""
@@ -46,7 +44,6 @@ class Plan:
             valid_until=pendulum.parse(data["valid_until"]).date() if "valid_until" in data else None,
             activities=activities
         )
-
 
 
 @dataclass(frozen=True)

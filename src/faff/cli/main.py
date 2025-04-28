@@ -89,16 +89,17 @@ def start(
     Add an entry to today's Private Log, starting now.
     """
     ws = ctx.obj
+    date = ws.today()
 
     if activity_id is None:
-        activities = ws.get_activities(ws.today())
+        activities = ws.get_activities(date)
 
         if not activities:
             typer.echo("No valid activities for today.")
             raise typer.Exit(1)
 
         choices = [
-            {"name": f"{a.name} ({a.id[:6]})", "value": a.id}
+            {"name": f"{a.name} ({ws.get_plan_by_activity_id(a.id, date).source})", "value": a.id}
             for a in activities.values()
         ]
 

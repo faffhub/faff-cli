@@ -40,17 +40,29 @@ class Workspace:
             raise ValueError(f"Invalid date format: {date}. Expected YYYY-MM-DD.")
 
     @cache
+    def get_plan_by_activity_id(self, activity_id: str, date: pendulum.Date) -> Plan:
+        """
+        Returns the plan for the given activity ID and date.
+        """
+        plans = self.get_plans(date)
+        for plan in plans.values():
+            for activity in plan.activities:
+                if activity.id == activity_id:
+                    return plan
+        raise ValueError(f"Activity {activity_id} not found in plans for {date}.")
+
+    @cache
     def get_activities(self, date: pendulum.Date) -> List[Activity]:
         """
         Returns a list of activities for the given date.
         """
-        plans = self.get_plans(date)
+        plans = self.get_plans(date).values()
         return {activity.id: activity
                 for plan in plans
                 for activity in plan.activities}
 
     @cache
-    def get_plans(self, date: pendulum.Date) -> List[Plan]:
+    def get_plans(self, date: pendulum.Date) -> dict[str, Plan]:
         """
         Loads all plans from the `.faff/plans` directory under the given root,
         and returns those valid on the target date.
@@ -75,7 +87,7 @@ class Workspace:
             if plans.get(plan.source) and plans[plan.source].valid_from < plan.valid_from:
                 plans[plan.source] = plan
 
-        return plans.values()
+        return plans
 
     def get_log(self, date: pendulum.Date) -> Log:
         """
