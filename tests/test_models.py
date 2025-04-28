@@ -1,10 +1,10 @@
-from faff import models
+from faff import Plan
 from pathlib import Path
 from datetime import date
 
 def test_plan_from_toml_file():
     test_file = Path("tests/testdata/sample_plan.toml")
-    plan = models.Plan.from_toml_file(test_file)
+    plan = Plan.Plan.from_toml_file(test_file)
 
     assert plan.source == "local"
     assert plan.valid_from == date(2025, 3, 20)

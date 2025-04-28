@@ -1,5 +1,5 @@
+from faff.cli.models import Log, Timesheet
 from faff.core.plugin import CompilePlugin
-from faff.models import TimeSheet, Log
 
 class TargetCompiler(CompilePlugin):
     """
@@ -9,7 +9,7 @@ class TargetCompiler(CompilePlugin):
     - Any client-billable work should be billed as a half or full day?
     """
 
-    def compile_time_sheet(self, log: Log) -> TimeSheet:
+    def compile_time_sheet(self, log: Log) -> Timesheet:
         activities = filter(log.timeline)
 
         target = self.config.get("target")

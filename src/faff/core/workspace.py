@@ -1,8 +1,8 @@
 from functools import cache
 
-from faff.core import FileSystem, LogFormatter, TomlSerializer
+from faff.cli.models import Log, Plan, Activity
+from faff.core import FileSystem, LogFormatter, TomlSerializer, Config
 from faff.core.plugin import CompilePlugin, PullPlugin, PushPlugin
-from faff.models import Activity, Config, Log, Plan
 
 import tomllib
 import pendulum

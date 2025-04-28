@@ -1,7 +1,6 @@
-from faff.models import Activity, Log
+from faff.cli.models import Activity, Log
 
 import pendulum
-import tomlkit
 
 import re
 from typing import List

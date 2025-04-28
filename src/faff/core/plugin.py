@@ -9,7 +9,7 @@ from typing import List, Dict, Any
 
 from abc import ABC, abstractmethod
 
-from faff.models import Log, TimeSheet
+from faff.cli.models import Timesheet, Log
 
 class Plugin(ABC):
     def __init__(self, plugin: str, name: str,
@@ -71,7 +71,7 @@ class PushPlugin(Plugin):
 
 class CompilePlugin(Plugin):
     @abstractmethod
-    def compile_time_sheet(self, log: Log) -> TimeSheet:
+    def compile_time_sheet(self, log: Log) -> Timesheet:
         """
         Generates a report based on the provided log.
 
