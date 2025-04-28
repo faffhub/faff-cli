@@ -1,4 +1,4 @@
-from faff.cli.models import Log, Timesheet
+from faff.models import Log, Timesheet
 from faff.core.plugin import CompilePlugin
 
 class TargetCompiler(CompilePlugin):

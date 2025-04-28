@@ -1,4 +1,4 @@
-from faff import Plan
+from faff.models import Plan
 from pathlib import Path
 from datetime import date
 
