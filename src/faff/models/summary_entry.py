@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-from .activity import Activity
-from .timeline_entry import TimelineEntry
+from faff.models import Activity, TimelineEntry
 
 from dataclasses import dataclass
 from typing import Dict, Optional
-
 
 @dataclass(frozen=True)
 class SummaryEntry:

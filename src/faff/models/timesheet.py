@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-from .summary_entry import SummaryEntry
-from .timeline_entry import TimelineEntry
+from faff.models import SummaryEntry, TimelineEntry
 
 import pendulum
 
 from dataclasses import dataclass, field
 from typing import Any, Dict, List
-
 
 @dataclass(frozen=True)
 class Timesheet():

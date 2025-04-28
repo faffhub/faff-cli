@@ -1,16 +1,11 @@
 from __future__ import annotations
 
-# Why doesn't this work?
-# from faff.models import Activity, SummaryEntry, TimelineEntry
-from .activity import Activity
-from .summary_entry import SummaryEntry
-from .timeline_entry import TimelineEntry
+from faff.models import Activity, SummaryEntry, TimelineEntry
 
 import pendulum
 
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
-
 
 @dataclass(frozen=True)
 class Log:

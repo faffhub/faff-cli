@@ -1,15 +1,13 @@
 from __future__ import annotations
 
-from .activity import Activity
+from faff.models import Activity
 
 from typing import Optional
 
 import pendulum
 
-
 from dataclasses import dataclass
 from typing import Dict
-
 
 @dataclass(frozen=True)
 class TimelineEntry:

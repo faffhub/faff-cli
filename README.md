@@ -1,2 +1,0 @@
-# faff
-Basic faff cli
