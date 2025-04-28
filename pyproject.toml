@@ -1,10 +1,10 @@
 # pyproject.toml (modern Python packaging using Poetry-style setup)
 [project]
-name = "faff"
+name = "faff-cli"
 version = "0.1.0"
 description = "A local-first time tracking CLI with decentralized protocol aspirations."
 authors = [{name="Thomas Lant", email="thomas@lant.uk"}]
-license = "AGPL-3.0-or-later"
+license = { text = "AGPL-3.0-or-later" }
 dependencies = [
     "typer[all]",
     "rich",
@@ -12,7 +12,7 @@ dependencies = [
 ]
 
 [project.scripts]
-faff = "faff.cli.main:cli"
+faff = "faff_cli.main:cli"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -2,7 +2,7 @@ import typer
 
 from faff.core import LogFormatter
 
-from faff.cli.utils import edit_file
+from faff_cli.utils import edit_file
 
 app = typer.Typer(help="View, edit, and interact with private logs.")
 

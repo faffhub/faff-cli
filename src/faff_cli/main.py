@@ -2,8 +2,8 @@ import typer
 
 from InquirerPy import inquirer
 
-from faff.cli import log, connection
-from faff.cli.utils import edit_file
+from faff_cli import log, connection
+from faff_cli.utils import edit_file
 
 from faff.core import Workspace
 
