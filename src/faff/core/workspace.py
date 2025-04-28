@@ -1,6 +1,6 @@
 from functools import cache
 
-from faff.cli.models import Log, Plan, Activity
+from faff.models import Log, Plan, Activity
 from faff.core import FileSystem, LogFormatter, TomlSerializer, Config
 from faff.core.plugin import CompilePlugin, PullPlugin, PushPlugin
 

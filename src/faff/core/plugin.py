@@ -9,7 +9,7 @@ from typing import List, Dict, Any
 
 from abc import ABC, abstractmethod
 
-from faff.cli.models import Timesheet, Log
+from faff.models import Timesheet, Log
 
 class Plugin(ABC):
     def __init__(self, plugin: str, name: str,

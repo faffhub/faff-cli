@@ -1,9 +1,7 @@
 import pendulum
 import tomli_w
 
-
 from typing import Any
-
 
 class TomlSerializer:
 

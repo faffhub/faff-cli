@@ -1,9 +1,7 @@
 import pendulum
 
-
 import os
 from pathlib import Path
-
 
 class FileSystem:
     ROOT_NAME = ".faff"
@@ -77,7 +75,6 @@ class FileSystem:
             try:
                 file_date = pendulum.parse(match.group("datestr"), strict=True).date()
                 if file_date > date:
-                    print("continue")
                     continue
                 if source not in candidates:
                     candidates[source] = file_date

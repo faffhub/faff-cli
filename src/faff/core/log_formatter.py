@@ -1,4 +1,4 @@
-from faff.cli.models import Activity, Log
+from faff.models import Activity, Log
 
 import pendulum
 
