@@ -1,6 +1,6 @@
 import typer
 
-from faff.core.plugin import PullPlugin, PushPlugin, CompilePlugin
+from faff.plugins import PullPlugin, PushPlugin, CompilePlugin
 
 app = typer.Typer(help="View connections")
 
