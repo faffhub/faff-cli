@@ -58,6 +58,17 @@ def config(ctx: typer.Context):
         typer.echo("No changes detected.")
 
 @cli.command()
+def compile(ctx: typer.Context, date: str = typer.Argument(None)):
+    """
+    cli: faff compile
+    Compile the timesheet for a given date, defaulting to today.
+    """
+    ws = ctx.obj
+    plugins = ws.compilers()
+    for plugin in plugins.values():
+        ws.write_timesheet(plugin, ws.today())
+
+@cli.command()
 def status(ctx: typer.Context):
     """
     cli: faff status
@@ -124,18 +135,6 @@ def stop(ctx: typer.Context):
     """
     ws = ctx.obj
     typer.echo(ws.stop_timeline_entry())
-
-@cli.command()
-def compile(ctx: typer.Context):
-    ws = ctx.obj
-
-    compilers = ws.compilers()
-    # Get today's log and compile it
-    log = ws.get_log(ws.today())
-
-    compiler = next(iter(compilers.values()))
-    print(compiler)
-    print(compiler.compile_time_sheet(log))
 
 @cli.command()
 def plan(ctx: typer.Context, date: str = typer.Argument(None)):
