@@ -148,7 +148,7 @@ def plan(ctx: typer.Context, date: str = typer.Argument(None)):
     else:
         date = ws.today()
 
-    plans = ws.get_plans(date)
+    plans = ws.get_plans(date).values()
     for plan in plans:
         typer.echo(f"Plan: {plan.source} (valid from {plan.valid_from})")
         for activity in plan.activities:
