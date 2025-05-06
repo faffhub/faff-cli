@@ -12,8 +12,13 @@ def list_ids(ctx: typer.Context):
     Show the available sources.
     """
     ws = ctx.obj
-    ids = [1,2,3]
-    typer.echo(f"There are {len(ids)} IDs configured:")
+    ids = ws.identities.get()
+    if len(ids) == 1:
+        typer.echo("There is 1 ID configured:")
+    else:
+        typer.echo(f"There are {len(ids)} IDs configured:")
+    for id in ids.keys():
+        typer.echo(f"- {id}")
 
 @app.command()
 def create(ctx: typer.Context, name: str, overwrite: bool = False):

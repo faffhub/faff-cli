@@ -1,4 +1,5 @@
 import typer
+import pendulum
 
 from faff.core import PrivateLogFormatter
 
@@ -12,19 +13,49 @@ faff log edit
 faff log refresh
 """
 
-@app.callback(invoke_without_command=True)
-def log(ctx: typer.Context):
+def resolve_natural_date(today: pendulum.Date, arg: str | None) -> pendulum.Date:
+    if arg is None or arg.lower() == "today":
+        return today
+    if arg.lower() == "yesterday":
+        return today.subtract(days=1)
+    
+    weekdays = {
+        "monday": pendulum.MONDAY,
+        "tuesday": pendulum.TUESDAY,
+        "wednesday": pendulum.WEDNESDAY,
+        "thursday": pendulum.THURSDAY,
+        "friday": pendulum.FRIDAY,
+        "saturday": pendulum.SATURDAY,
+        "sunday": pendulum.SUNDAY,
+    }
+
+    weekday = weekdays.get(arg.lower())
+    if weekday is not None:
+        return today.previous(weekday)
+    
+    try:
+        return pendulum.parse(arg).date()
+    except Exception:
+        raise typer.BadParameter(f"Unrecognized date: '{arg}'")
+
+@app.command()
+def show(ctx: typer.Context, date: str = typer.Argument(None)):
     """
     cli: faff log
     Show the log for today.
     """
-    if ctx.invoked_subcommand is None:
-        ws = ctx.obj
-        log = ws.logs.get_log(ws.today())
-        if log:
-            typer.echo(PrivateLogFormatter.format_log(log, ws.plans.get_activities(log.date)))
-        else:
-            typer.echo("No log found for today.")
+    ws = ctx.obj
+    resolved_date = resolve_natural_date(ws.today(), date)
+
+    log = ws.logs.get_log(resolved_date)
+    typer.echo(PrivateLogFormatter.format_log(log, ws.plans.get_activities(log.date)))
+
+@app.command(name="list") # To avoid conflict with list type
+def log_list(ctx: typer.Context):
+    ws = ctx.obj
+
+    for log_file in ws.logs.list():
+        typer.echo(log_file)
 
 @app.command()
 def edit(ctx: typer.Context, date: str = typer.Argument(None)):
@@ -34,20 +65,16 @@ def edit(ctx: typer.Context, date: str = typer.Argument(None)):
     """
     ws = ctx.obj
 
-    # Sanitize date input
-    if date:
-        date = ws.parse_date(date)
-    else:
-        date = ws.today()
+    resolved_date = resolve_natural_date(ws.today(), date)
 
     # Process the log to ensure it's correctly formatted for reading
-    ws.logs.write_log(ws.logs.get_log(date))
+    ws.logs.write_log(ws.logs.get_log(resolved_date))
 
-    if edit_file(ws.fs.log_path(date)):
+    if edit_file(ws.fs.log_path(resolved_date)):
         typer.echo("Log file updated.")
 
         # Process the edited file again after editing
-        ws.logs.write_log(ws.logs.get_log(date))
+        ws.logs.write_log(ws.logs.get_log(resolved_date))
     else:
         typer.echo("No changes detected.")
 
