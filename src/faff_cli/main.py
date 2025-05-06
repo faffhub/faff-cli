@@ -2,7 +2,7 @@ import typer
 
 from InquirerPy import inquirer
 
-from faff_cli import log, connection
+from faff_cli import log, connection, id
 from faff_cli.utils import edit_file
 
 from faff.core import Workspace
@@ -11,6 +11,7 @@ cli = typer.Typer()
 
 cli.add_typer(log.app, name="log")
 cli.add_typer(connection.app, name="connection")
+cli.add_typer(id.app, name="id")
 
 """
 faff init                         # initialise faff repository        ✅
@@ -66,7 +67,7 @@ def compile(ctx: typer.Context, date: str = typer.Argument(None)):
     ws = ctx.obj
     plugins = ws.compilers()
     for plugin in plugins.values():
-        ws.write_timesheet(plugin, ws.today())
+        ws.timesheets.write_timesheet(plugin, ws.today())
 
 @cli.command()
 def status(ctx: typer.Context):
@@ -77,7 +78,7 @@ def status(ctx: typer.Context):
     ws = ctx.obj
     typer.echo(f"Status for faff repo root at: {ws.fs.find_faff_root()}")
 
-    log = ws.get_log(ws.today())
+    log = ws.logs.get_log(ws.today())
     typer.echo(f"Total recorded time for today: {log.total_recorded_time().in_words()}")
 
     active_timeline_entry = log.active_timeline_entry()
@@ -103,14 +104,14 @@ def start(
     date = ws.today()
 
     if activity_id is None:
-        activities = ws.get_activities(date)
+        activities = ws.plans.get_activities(date)
 
         if not activities:
             typer.echo("No valid activities for today.")
             raise typer.Exit(1)
 
         choices = [
-            {"name": f"{a.name} ({ws.get_plan_by_activity_id(a.id, date).source})", "value": a.id}
+            {"name": f"{a.name} ({ws.plans.get_plan_by_activity_id(a.id, date).source})", "value": a.id}
             for a in activities.values()
         ]
 
@@ -123,10 +124,7 @@ def start(
         if note is None:
             note = inquirer.text(message="Optional note:").execute()
 
-    typer.echo(ws.start_timeline_entry(activity_id, note))
-
-    #ws = ctx.obj
-    #typer.echo(ws.start_timeline_entry(activity_id, note))
+    typer.echo(ws.logs.start_timeline_entry_now(activity_id, note))
 
 @cli.command()
 def stop(ctx: typer.Context):
@@ -134,7 +132,7 @@ def stop(ctx: typer.Context):
     Stop the current timeline entry.
     """
     ws = ctx.obj
-    typer.echo(ws.stop_timeline_entry())
+    typer.echo(ws.logs.stop_current_timeline_entry())
 
 @cli.command()
 def plan(ctx: typer.Context, date: str = typer.Argument(None)):
@@ -148,7 +146,7 @@ def plan(ctx: typer.Context, date: str = typer.Argument(None)):
     else:
         date = ws.today()
 
-    plans = ws.get_plans(date).values()
+    plans = ws.plans.get_plans(date).values()
     for plan in plans:
         typer.echo(f"Plan: {plan.source} (valid from {plan.valid_from})")
         for activity in plan.activities:
@@ -161,6 +159,6 @@ def pull(ctx: typer.Context, date: str = typer.Argument(None)):
     Pull planned activities from all sources.
     """
     ws = ctx.obj
-    plugins = ws.plan_sources()
-    for plugin in plugins.values():
-        ws.write_plan(plugin, ws.today())
+    sources = ws.plans.sources()
+    for source in sources:
+        ws.plans.write_plan(source, ws.today())

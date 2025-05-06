@@ -16,7 +16,7 @@ def status(ctx: typer.Context):
     """
     ws = ctx.obj
     # FIXME: don't use this private method
-    plugins = ws._load_plugins()
+    plugins = ws.plugins.load_plugins()
     if len(plugins) == 1:
         typer.echo(f"There is 1 connector plugin installed:")
     else:
@@ -38,10 +38,10 @@ def list_sources(ctx: typer.Context):
     Show the available sources.
     """
     ws = ctx.obj
-    plugins = ws.plan_sources()
-    if len(plugins) == 1:
+    sources = ws.plans.sources()
+    if len(sources) == 1:
         typer.echo(f"There is 1 plan source configured:")
     else:
-        typer.echo(f"There are {len(plugins)} plan sources configured:")
-    for plugin_name, plugin in plugins.items():
-        typer.echo(f"- {plugin_name} ({plugin.__class__.__name__})")
+        typer.echo(f"There are {len(sources)} plan sources configured:")
+    for source in sources:
+        typer.echo(f"- {source.name} ({source.__class__.__name__})")

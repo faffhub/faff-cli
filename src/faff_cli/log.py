@@ -1,6 +1,6 @@
 import typer
 
-from faff.core import LogFormatter
+from faff.core import PrivateLogFormatter
 
 from faff_cli.utils import edit_file
 
@@ -20,9 +20,9 @@ def log(ctx: typer.Context):
     """
     if ctx.invoked_subcommand is None:
         ws = ctx.obj
-        log = ws.get_log(ws.today())
+        log = ws.logs.get_log(ws.today())
         if log:
-            typer.echo(LogFormatter.format_log(log, ws.get_activities(log.date)))
+            typer.echo(PrivateLogFormatter.format_log(log, ws.plans.get_activities(log.date)))
         else:
             typer.echo("No log found for today.")
 
@@ -41,13 +41,13 @@ def edit(ctx: typer.Context, date: str = typer.Argument(None)):
         date = ws.today()
 
     # Process the log to ensure it's correctly formatted for reading
-    ws.write_log(ws.get_log(date))
+    ws.logs.write_log(ws.logs.get_log(date))
 
     if edit_file(ws.fs.log_path(date)):
         typer.echo("Log file updated.")
 
         # Process the edited file again after editing
-        ws.write_log(ws.get_log(date))
+        ws.logs.write_log(ws.logs.get_log(date))
     else:
         typer.echo("No changes detected.")
 
@@ -66,5 +66,5 @@ def refresh(ctx: typer.Context, date: str = typer.Argument(None)):
     else:
         date = ws.today()
 
-    ws.write_log(ws.get_log(date))
+    ws.logs.write_log(ws.logs.get_log(date))
     typer.echo("Log refreshed.")
