@@ -54,8 +54,25 @@ def show(ctx: typer.Context, date: str = typer.Argument(None)):
 def log_list(ctx: typer.Context):
     ws = ctx.obj
 
-    for log_file in ws.logs.list():
-        typer.echo(log_file)
+    for log in ws.logs.list():
+        typer.echo(f"{log.date} {log.total_recorded_time().in_words()}{' *UNCLOSED*' if not log.is_closed() else ''}")
+
+@app.command()
+def rm(ctx: typer.Context, date: str):
+    """
+    cli: faff log rm
+    Remove the log for today.
+    """
+    ws = ctx.obj
+
+    resolved_date = resolve_natural_date(ws.today(), date)
+
+    # TODO: Implement the remove functionality
+
+    #if ws.logs.rm(resolved_date):
+    #    typer.echo(f"Log for {resolved_date} removed.")
+    #else:
+    #    typer.echo(f"No log found for {resolved_date}.")
 
 @app.command()
 def edit(ctx: typer.Context, date: str = typer.Argument(None)):
