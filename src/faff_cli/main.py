@@ -2,7 +2,7 @@ import typer
 
 from InquirerPy import inquirer
 
-from faff_cli import log, connection, id
+from faff_cli import log, connection, id, source
 from faff_cli.utils import edit_file
 
 from faff.core import Workspace
@@ -10,6 +10,7 @@ from faff.core import Workspace
 cli = typer.Typer()
 
 cli.add_typer(log.app, name="log")
+cli.add_typer(source.app, name="source")
 cli.add_typer(connection.app, name="connection")
 cli.add_typer(id.app, name="id")
 
