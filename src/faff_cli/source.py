@@ -9,12 +9,9 @@ def list_sources(ctx: typer.Context):
     """
     ws = ctx.obj
     sources = ws.plans.sources()
-    if len(sources) == 1:
-        typer.echo(f"There is 1 plan source configured:")
-    else:
-        typer.echo(f"There are {len(sources)} plan sources configured:")
+    typer.echo(f"Found {len(sources)} configured source(s):")
     for source in sources:
-        typer.echo(f"- {source.name} ({source.__class__.__name__})")
+        typer.echo(f"- {source.id} {source.__class__.__name__}")
 
 @app.command()
 def pull(ctx: typer.Context, name: str):

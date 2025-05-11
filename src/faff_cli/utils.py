@@ -1,5 +1,6 @@
 import os
 import subprocess
+import pendulum
 
 from pathlib import Path
 
@@ -29,3 +30,28 @@ def edit_file(path: Path) -> bool:
     # newline and compare the text.
 
     return pre_edit.strip() != post_edit.strip()
+
+def resolve_natural_date(today: pendulum.Date, arg: str | None) -> pendulum.Date:
+    if arg is None or arg.lower() == "today":
+        return today
+    if arg.lower() == "yesterday":
+        return today.subtract(days=1)
+    
+    weekdays = {
+        "monday": pendulum.MONDAY,
+        "tuesday": pendulum.TUESDAY,
+        "wednesday": pendulum.WEDNESDAY,
+        "thursday": pendulum.THURSDAY,
+        "friday": pendulum.FRIDAY,
+        "saturday": pendulum.SATURDAY,
+        "sunday": pendulum.SUNDAY,
+    }
+
+    weekday = weekdays.get(arg.lower())
+    if weekday is not None:
+        return today.previous(weekday)
+    
+    try:
+        return pendulum.parse(arg).date()
+    except Exception:
+        raise typer.BadParameter(f"Unrecognized date: '{arg}'")

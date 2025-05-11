@@ -2,7 +2,7 @@ import typer
 
 from InquirerPy import inquirer
 
-from faff_cli import log, connection, id, source
+from faff_cli import log, connection, id, source, plan, compiler
 from faff_cli.utils import edit_file
 
 from faff.core import Workspace
@@ -12,7 +12,9 @@ cli = typer.Typer()
 cli.add_typer(log.app, name="log")
 cli.add_typer(source.app, name="source")
 cli.add_typer(connection.app, name="connection")
+cli.add_typer(compiler.app, name="compiler")
 cli.add_typer(id.app, name="id")
+cli.add_typer(plan.app, name="plan")
 
 """
 faff init                         # initialise faff repository        ✅
@@ -135,23 +137,7 @@ def stop(ctx: typer.Context):
     ws = ctx.obj
     typer.echo(ws.logs.stop_current_timeline_entry())
 
-@cli.command()
-def plan(ctx: typer.Context, date: str = typer.Argument(None)):
-    """
-    Show the planned activities for a given day, defaulting to today
-    """
-    ws = ctx.obj
 
-    if date:
-        date = ws.parse_date(date)
-    else:
-        date = ws.today()
-
-    plans = ws.plans.get_plans(date).values()
-    for plan in plans:
-        typer.echo(f"Plan: {plan.source} (valid from {plan.valid_from})")
-        for activity in plan.activities:
-            typer.echo(f"- {activity.id}: {activity.name}")
 
 @cli.command()
 def pull(ctx: typer.Context, date: str = typer.Argument(None)):

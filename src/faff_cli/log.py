@@ -1,5 +1,4 @@
 import typer
-import pendulum
 
 from faff.core import PrivateLogFormatter
 
@@ -13,30 +12,7 @@ faff log edit
 faff log refresh
 """
 
-def resolve_natural_date(today: pendulum.Date, arg: str | None) -> pendulum.Date:
-    if arg is None or arg.lower() == "today":
-        return today
-    if arg.lower() == "yesterday":
-        return today.subtract(days=1)
-    
-    weekdays = {
-        "monday": pendulum.MONDAY,
-        "tuesday": pendulum.TUESDAY,
-        "wednesday": pendulum.WEDNESDAY,
-        "thursday": pendulum.THURSDAY,
-        "friday": pendulum.FRIDAY,
-        "saturday": pendulum.SATURDAY,
-        "sunday": pendulum.SUNDAY,
-    }
-
-    weekday = weekdays.get(arg.lower())
-    if weekday is not None:
-        return today.previous(weekday)
-    
-    try:
-        return pendulum.parse(arg).date()
-    except Exception:
-        raise typer.BadParameter(f"Unrecognized date: '{arg}'")
+from faff_cli.utils import resolve_natural_date
 
 @app.command()
 def show(ctx: typer.Context, date: str = typer.Argument(None)):
@@ -54,8 +30,10 @@ def show(ctx: typer.Context, date: str = typer.Argument(None)):
 def log_list(ctx: typer.Context):
     ws = ctx.obj
 
+    typer.echo("Private logs recorded for the following dates:")
     for log in ws.logs.list():
-        typer.echo(f"{log.date} {log.total_recorded_time().in_words()}{' *UNCLOSED*' if not log.is_closed() else ''}")
+        # FIXME: It would be nicer if this included the start and end time of the day
+        typer.echo(f"- {log.date} {log.total_recorded_time().in_words()}{' *UNCLOSED*' if not log.is_closed() else ''}")
 
 @app.command()
 def rm(ctx: typer.Context, date: str):

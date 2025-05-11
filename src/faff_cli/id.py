@@ -1,6 +1,6 @@
 import typer
 
-app = typer.Typer(help="View, edit, and interact with private logs.")
+app = typer.Typer(help="View, edit, and interact with identities.")
 
 """
 faff id list
@@ -13,10 +13,7 @@ def list_ids(ctx: typer.Context):
     """
     ws = ctx.obj
     ids = ws.identities.get()
-    if len(ids) == 1:
-        typer.echo("There is 1 ID configured:")
-    else:
-        typer.echo(f"There are {len(ids)} IDs configured:")
+    typer.echo(f"Found {len(ids)} ID(s) configured:")
     for id in ids.keys():
         typer.echo(f"- {id}")
 
