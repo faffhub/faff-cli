@@ -1,7 +1,5 @@
 import typer
 
-from faff_cli.utils import edit_file
-
 app = typer.Typer(help="View, edit, and interact with downloaded plans.")
 
 """
@@ -35,7 +33,7 @@ def show(ctx: typer.Context,
     ws = ctx.obj
     resolved_date = resolve_natural_date(ws.today(), date)
 
-    plan = ws.plans.get_plans(resolved_date)..get(plan_id)
+    plan = ws.plans.get_plans(resolved_date).get(plan_id)
     typer.echo(f"Plan: {plan.source} (valid from {plan.valid_from})")
     for activity in plan.activities:
         typer.echo(f"- {activity.id}: {activity.name}")
