@@ -25,19 +25,17 @@ def list_plans(ctx: typer.Context, date: str = typer.Argument(None)):
     for plan in plans:
         typer.echo(f"- {plan.source} {plan.valid_from}{' ' + plan.valid_until if plan.valid_until else '..'}")
 
-def list_plans(ctx: typer.Context, date: str = typer.Argument(None)):
+@app.command()
+def show(ctx: typer.Context,
+         plan_id: str = typer.Argument(None),
+         date: str = typer.Argument(None)):
     """
     Show the planned activities for a given day, defaulting to today
     """
     ws = ctx.obj
+    resolved_date = resolve_natural_date(ws.today(), date)
 
-    if date:
-        date = ws.parse_date(date)
-    else:
-        date = ws.today()
-
-    plans = ws.plans.get_plans(date).values()
-    for plan in plans:
-        typer.echo(f"Plan: {plan.source} (valid from {plan.valid_from})")
-        for activity in plan.activities:
-            typer.echo(f"- {activity.id}: {activity.name}")
+    plan = ws.plans.get_plans(resolved_date)..get(plan_id)
+    typer.echo(f"Plan: {plan.source} (valid from {plan.valid_from})")
+    for activity in plan.activities:
+        typer.echo(f"- {activity.id}: {activity.name}")
