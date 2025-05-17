@@ -24,7 +24,7 @@ def show(ctx: typer.Context, date: str = typer.Argument(None)):
     resolved_date = resolve_natural_date(ws.today(), date)
 
     log = ws.logs.get_log(resolved_date)
-    typer.echo(PrivateLogFormatter.format_log(log, ws.plans.get_activities(log.date)))
+    typer.echo(PrivateLogFormatter.format_log(log, ws.plans.get_buckets(log.date)))
 
 @app.command(name="list") # To avoid conflict with list type
 def log_list(ctx: typer.Context):
@@ -56,7 +56,7 @@ def rm(ctx: typer.Context, date: str):
 def edit(ctx: typer.Context, date: str = typer.Argument(None)):
     """
     cli: faff log edit
-    Log your activities for the day by opening a file in your preferred editor.
+    Log your buckets for the day by opening a file in your preferred editor.
     """
     ws = ctx.obj
 

@@ -14,15 +14,15 @@ def list_sources(ctx: typer.Context):
         typer.echo(f"- {source.id} {source.__class__.__name__}")
 
 @app.command()
-def pull(ctx: typer.Context, name: str):
+def pull(ctx: typer.Context, source_id: str):
     """
     Pull the plans from a given source.
     """
     ws = ctx.obj
     sources = ws.plans.sources()
-    source = [s for s in sources if s.name == name][0]
+    source = [s for s in sources if s.id == source_id][0]
     if source is None:
-        raise typer.BadParameter(f"Unknown source: {name}")
+        raise typer.BadParameter(f"Unknown source: {source_id}")
 
         ws.plans.write_plan(source, ws.today())   
     ws.plans.write_plan(source, ws.today())

@@ -27,10 +27,10 @@ faff status
 Show a quick status report of the faff repo and today's private log.
 
 faff start
-Start recording time against an activity now.
+Start recording time against an bucket now.
 
 faff stop
-Stop the current activity.
+Stop the current bucket.
 
 faff log list 
 List all the private log entries, with a summary of the hours recorded that day.
@@ -67,4 +67,4 @@ List the plans effective on the specified date.
 faff plan show <date>
 faff plan show --source <source>
 faff plan show --id <id>
-Show the activities on plan on the specified date.
+Show the buckets on plan on the specified date.

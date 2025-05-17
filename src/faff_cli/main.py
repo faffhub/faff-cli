@@ -1,9 +1,12 @@
 import typer
 
+
 from InquirerPy import inquirer
+
 
 from faff_cli import log, connection, id, source, plan, compiler
 from faff_cli.utils import edit_file
+from faff_cli.ui import fuzzy_select
 
 from faff.core import Workspace
 
@@ -18,8 +21,8 @@ cli.add_typer(plan.app, name="plan")
 
 """
 faff init                         # initialise faff repository        ✅
-faff plan                         # show today's activities           ✅
-faff start <activity-id> [note]   # start work                        ✅
+faff plan                         # show today's buckets           ✅
+faff start <bucket-id> [note]   # start work                        ✅
 faff stop                         # stop current task                 ✅
 faff status                       # show working state                ✅
 faff log                          # show today's log                  ✅
@@ -88,16 +91,67 @@ def status(ctx: typer.Context):
     if active_timeline_entry:
         duration = ws.now() - active_timeline_entry.start
         if active_timeline_entry.note:
-            typer.echo(f"Working on {active_timeline_entry.activity.name} (\"{active_timeline_entry.note}\") for {duration.in_words()}")
+            typer.echo(f"Working on {active_timeline_entry.name} (\"{active_timeline_entry.note}\") for {duration.in_words()}")
         else:
-            typer.echo(f"Working on {active_timeline_entry.activity.name} for {duration.in_words()}")
+            typer.echo(f"Working on {active_timeline_entry.name} for {duration.in_words()}")
     else:
         typer.echo("Not currently working on anything.")
+
+
+@cli.command()
+def istart(ctx: typer.Context):
+
+    ws = ctx.obj
+    date = ws.today()
+
+    activity, new = fuzzy_select("I am doing:", ws.plans.get_activities(date))
+    role, new = fuzzy_select("as:", ws.plans.get_roles(date))
+    goal, new = fuzzy_select("to achieve:", ws.plans.get_goals(date))
+    beneficiary, new = fuzzy_select("for:", ws.plans.get_beneficiaries(date))
+
+    buckets = ws.plans.get_buckets(ws.today())
+
+    if not buckets:
+        typer.echo("No valid buckets for today.")
+        raise typer.Exit(1)
+
+    choices = [
+        {"name": f"{a.name} ({ws.plans.get_plan_by_bucket_id(a.id, date).source})", "value": a.id}
+        for a in buckets.values()
+    ]
+
+    bucket_id, _ = fuzzy_select(
+        prompt="Tracked under (esc for none):",
+        choices=choices,
+        create_new=False,
+        escapable=True
+    )
+
+    if bucket_id:
+        bucket_id = bucket_id.get("value", None)
+    
+    suggested_name = f"{role}: {activity[0].upper() + activity[1:]} to {goal} for {beneficiary}"
+    name, _ = fuzzy_select(
+        prompt="Name (esc for none):",
+        choices=[suggested_name],
+        create_new=True,
+        escapable=True
+    )
+
+    typer.echo(ws.logs.start_intent_now(role, bucket_id, goal, beneficiary, name, None, None))
+    #print(f"{role_id}: {activity_id[0].upper() + activity_id[1:]} to {goal_id} for {beneficiary_id}")
+
+    #if note is None:
+    #    note = inquirer.text(message="Optional note:").execute()
+
+    #typer.echo(ws.logs.start_timeline_entry_now(bucket_id, ""))
+
+    
 
 @cli.command()
 def start(
     ctx: typer.Context,
-    activity_id: str = typer.Argument(None),
+    bucket_id: str = typer.Argument(None),
     note: str = typer.Argument(None),
 ):
     """
@@ -106,28 +160,28 @@ def start(
     ws = ctx.obj
     date = ws.today()
 
-    if activity_id is None:
-        activities = ws.plans.get_activities(date)
+    if bucket_id is None:
+        buckets = ws.plans.get_buckets(date)
 
-        if not activities:
-            typer.echo("No valid activities for today.")
+        if not buckets:
+            typer.echo("No valid buckets for today.")
             raise typer.Exit(1)
 
         choices = [
-            {"name": f"{a.name} ({ws.plans.get_plan_by_activity_id(a.id, date).source})", "value": a.id}
-            for a in activities.values()
+            {"name": f"{a.name} ({ws.plans.get_plan_by_bucket_id(a.id, date).source})", "value": a.id}
+            for a in buckets.values()
         ]
 
         # FIXME: We should show the source plan, too.
-        activity_id = inquirer.fuzzy(
-            message="Select an activity to start:",
+        bucket_id = inquirer.fuzzy(
+            message="Select an bucket to start:",
             choices=choices,
         ).execute()
 
         if note is None:
             note = inquirer.text(message="Optional note:").execute()
 
-    typer.echo(ws.logs.start_timeline_entry_now(activity_id, note))
+    typer.echo(ws.logs.start_timeline_entry_now(bucket_id, note))
 
 @cli.command()
 def stop(ctx: typer.Context):
@@ -143,7 +197,7 @@ def stop(ctx: typer.Context):
 def pull(ctx: typer.Context, date: str = typer.Argument(None)):
     """
     cli: faff pull
-    Pull planned activities from all sources.
+    Pull planned buckets from all sources.
     """
     ws = ctx.obj
     sources = ws.plans.sources()
