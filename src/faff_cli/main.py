@@ -1,14 +1,15 @@
 import typer
 
-
 from InquirerPy import inquirer
-
 
 from faff_cli import log, connection, id, source, plan, compiler
 from faff_cli.utils import edit_file
 from faff_cli.ui import fuzzy_select
 
 from faff.core import Workspace
+from faff_cli.utils import resolve_natural_date
+
+from faff.models import Intent
 
 cli = typer.Typer()
 
@@ -99,57 +100,79 @@ def status(ctx: typer.Context):
 
 
 @cli.command()
-def istart(ctx: typer.Context):
+def start(ctx: typer.Context):
 
     ws = ctx.obj
     date = ws.today()
 
-    activity, new = fuzzy_select("I am doing:", ws.plans.get_activities(date))
-    role, new = fuzzy_select("as:", ws.plans.get_roles(date))
-    goal, new = fuzzy_select("to achieve:", ws.plans.get_goals(date))
-    beneficiary, new = fuzzy_select("for:", ws.plans.get_beneficiaries(date))
+    intents = ws.plans.get_intents(date)
+    x = []
+    for intent in intents:
+        x.append({
+            "name": intent.get_alias(),
+            "value": intent
+        })
 
-    buckets = ws.plans.get_buckets(ws.today())
+    intent, new = fuzzy_select(prompt="I am doing:", choices=x, escapable=True)
+    if not intent:
+        # No intent found, so we need to create a new one.
+        activity, new = fuzzy_select("I am doing:", ws.plans.get_activities(date))
+        role, new = fuzzy_select("as:", ws.plans.get_roles(date))
+        goal, new = fuzzy_select("to achieve:", ws.plans.get_goals(date))
+        beneficiary, new = fuzzy_select("for:", ws.plans.get_beneficiaries(date))
 
-    if not buckets:
-        typer.echo("No valid buckets for today.")
-        raise typer.Exit(1)
+        buckets = ws.plans.get_buckets(ws.today())
 
-    choices = [
-        {"name": f"{a.name} ({ws.plans.get_plan_by_bucket_id(a.id, date).source})", "value": a.id}
-        for a in buckets.values()
-    ]
+        choices = [
+            {"name": f"{a.name} ({ws.plans.get_plan_by_bucket_id(a.id, date).source})", "value": a.id}
+            for a in buckets.values()
+        ]
+        bucket_id, _ = fuzzy_select(
+            prompt="Tracked under (esc for none):",
+            choices=choices,
+            create_new=False,
+            escapable=True
+        )
 
-    bucket_id, _ = fuzzy_select(
-        prompt="Tracked under (esc for none):",
-        choices=choices,
-        create_new=False,
-        escapable=True
-    )
+        if bucket_id:
+            bucket_id = bucket_id.get("value", None)
 
-    if bucket_id:
-        bucket_id = bucket_id.get("value", None)
-    
-    suggested_name = f"{role}: {activity[0].upper() + activity[1:]} to {goal} for {beneficiary}"
-    name, _ = fuzzy_select(
-        prompt="Name (esc for none):",
-        choices=[suggested_name],
-        create_new=True,
-        escapable=True
-    )
+        suggested_name = f"{role}: {activity[0].upper() + activity[1:]} to {goal} for {beneficiary}"
+        alias, _ = fuzzy_select(
+            prompt="Name (esc for none):",
+            choices=[suggested_name],
+            create_new=True,
+            escapable=True
+        )
 
-    typer.echo(ws.logs.start_intent_now(role, bucket_id, goal, beneficiary, name, None, None))
-    #print(f"{role_id}: {activity_id[0].upper() + activity_id[1:]} to {goal_id} for {beneficiary_id}")
 
-    #if note is None:
-    #    note = inquirer.text(message="Optional note:").execute()
+        local_plan = ws.plans.local_plan(date)
+        new_plan = local_plan.add_intent(Intent(
+            alias=alias,
+            role=role,
+            activity=activity,
+            goal=goal,
+            beneficiary=beneficiary,
+            bucket=bucket_id
+        ))
+        ws.plans.write_plan(new_plan)
 
-    #typer.echo(ws.logs.start_timeline_entry_now(bucket_id, ""))
 
-    
+    else:
+        intent = intent.get("value", None)
+        # We have an existing intent, so we can use that.
+        activity = intent.activity
+        role = intent.role
+        goal = intent.goal
+        beneficiary = intent.beneficiary
+        alias = intent.alias
+        bucket_id = intent.bucket
+
+    typer.echo(ws.logs.start_intent_now(role, bucket_id, goal, beneficiary, alias, None, None))
+
 
 @cli.command()
-def start(
+def ostart(
     ctx: typer.Context,
     bucket_id: str = typer.Argument(None),
     note: str = typer.Argument(None),
@@ -200,6 +223,10 @@ def pull(ctx: typer.Context, date: str = typer.Argument(None)):
     Pull planned buckets from all sources.
     """
     ws = ctx.obj
+
+    resolved_date = resolve_natural_date(ws.today(), date)
+
     sources = ws.plans.sources()
     for source in sources:
-        ws.plans.write_plan(source, ws.today())
+        plan = source.pull_plan(resolved_date)
+        ws.plans.write_plan(plan)

@@ -24,6 +24,9 @@ def pull(ctx: typer.Context, source_id: str):
     if source is None:
         raise typer.BadParameter(f"Unknown source: {source_id}")
 
-        ws.plans.write_plan(source, ws.today())   
-    ws.plans.write_plan(source, ws.today())
-    typer.echo(f"Pulled plans from {source.name}")
+    plan = source.pull_plan(ws.today())
+    if plan:
+        ws.plans.write_plan(plan)
+        typer.echo(f"Pulled plans from {source.name}")
+    else:
+        typer.echo(f"No plans found for {source.name}")
