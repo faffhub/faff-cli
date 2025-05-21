@@ -1,1 +1,1 @@
-from .fuzzy_select import fuzzy_select
+from .fuzzy_select import fuzzy_select, FuzzyItem

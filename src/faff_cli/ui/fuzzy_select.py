@@ -7,44 +7,64 @@ from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.styles import Style
 from prompt_toolkit.shortcuts import print_formatted_text
 from prompt_toolkit.formatted_text import HTML
-from prompt_toolkit.enums import EditingMode
 
-from typing import Union, Tuple
+from typing import Union, Tuple, Any, Optional
+from dataclasses import dataclass
 
-from pfzy import fzy_scorer  # or your own scorer
+from pfzy import fzy_scorer
 
 style = Style.from_dict({
     "selector": "fg:ansigray",
     "match":    "fg:ansimagenta bold",
     "select":   "fg:ansiblue",
+    "decoration": "fg:ansigreen",
 })
 
+@dataclass
+class FuzzyItem:
+    name: str
+    value: Any
+    decoration: Optional[str] = None
+
+def is_list_of_strs(items: list[Any]) -> bool:
+    return all(isinstance(i, str) for i in items)
+
+def is_list_of_dicts(items: list[Any]) -> bool:
+    return all(isinstance(i, dict) and "name" in i and "value" in i for i in items)
+
+def is_list_of_dataclasses(items: list[Any]) -> bool:
+    return all(isinstance(i, FuzzyItem) for i in items)
+
+def normalize_to_fuzzyitems(items: list[Any]) -> list[FuzzyItem]:
+    if is_list_of_strs(items):
+        return [FuzzyItem(name=i, value=i) for i in items]
+    elif is_list_of_dicts(items):
+        return [FuzzyItem(name=i["name"], value=i.get("value", i["name"]), decoration=i.get("decoration")) for i in items]
+    elif is_list_of_dataclasses(items):
+        return items[:]
+    else:
+        raise TypeError("Expected list of str, dicts with name/value, or FuzzyItem instances")
+
 def fuzzy_select(prompt: str,
-                 choices: list[str],
+                 choices: list[Union[str, FuzzyItem]],
                  create_new: bool = True,
                  max_fraction: float = 0.5,
                  escapable: bool = True) -> Tuple[Union[str, None], bool]:
 
-    # compute max visible rows
     import shutil
     total = shutil.get_terminal_size().lines
     max_rows = max(3, int(total * max_fraction))
 
-    choices_dict = None
-
-    if choices and isinstance(choices[0], dict):
-        # If the choices are dicts, we need to extract the string values
-        # for fuzzy matching and display.
-        choices_dict = {c["name"]: c["value"] for c in choices}
-        choices = [c["name"] for c in choices]
+    choices = normalize_to_fuzzyitems(choices)
 
     user_input    = ""
     matches       = choices[:]
     match_indices = {}
     selected_idx  = 0
-    offset        = 0     # top‐of‐view index
+    offset        = 0
 
     kb = KeyBindings()
+
     @kb.add("up")
     def _(event):
         nonlocal selected_idx, offset
@@ -63,7 +83,7 @@ def fuzzy_select(prompt: str,
     def _(event):
         if selected_idx < len(matches):
             val = matches[selected_idx]
-            event.app.exit(result=(val, val not in choices))
+            event.app.exit(result=(val.value, val.name.startswith("Create new: ")))
         else:
             event.app.exit(result=(None, False))
 
@@ -77,121 +97,80 @@ def fuzzy_select(prompt: str,
         raise KeyboardInterrupt()
 
     buf = Buffer()
+
     def on_change(_):
-        nonlocal user_input, matches, match_indices, selected_idx, offset, create_new
+        nonlocal user_input, matches, match_indices, selected_idx, offset
         user_input = buf.text
-        # reset
         if not user_input.strip():
-            matches, match_indices = choices[:], {}
+            matches = choices[:]
+            match_indices = {}
         else:
             scored = []
             for cand in choices:
-                score, idxs = fzy_scorer(user_input, cand)
+                score, idxs = fzy_scorer(user_input, cand.name)
                 if score > 0:
                     scored.append((cand, score, idxs))
             scored.sort(key=lambda x: x[1], reverse=True)
-            matches       = [c for c,_,_ in scored]
-            match_indices = {c: idxs for c,_,idxs in scored}
-            if create_new and user_input not in matches:
-                matches.append(f"Create new: {user_input}")
-        # reset view
+            matches = [c for c,_,_ in scored]
+            match_indices = {c.name: idxs for c,_,idxs in scored}
+            if create_new and user_input not in [c.name for c in matches]:
+                matches.append(FuzzyItem(name=f"Create new: {user_input}", value=user_input))
         selected_idx = 0
-        offset       = 0
+        offset = 0
 
     buf.on_text_changed += on_change
 
     def get_menu_tokens():
-        nonlocal create_new
-
         tokens = []
         visible = matches[offset: offset + max_rows]
         for i, m in enumerate(visible):
             actual_i = offset + i
             is_sel   = (actual_i == selected_idx)
 
-            # 1) Arrow prefix: always grey for non-selected, but green? always selector
             tokens.append(("class:selector", "❯ " if is_sel else "  "))
 
-            # 2) Line text
-            if create_new and m.startswith("Create new: "):
-                # if it's the "create new" line, tag the whole thing
-                text_tag = "class:select" if is_sel else ""
-                tokens.append((text_tag, m + "\n"))
-            else:
-                # normal lines: highlight each matched char in purple,
-                # **and** also tag ALL fragments with select if is_sel
-                idxs = match_indices.get(m, [])
-                last = 0
-                for pos in idxs:
-                    if pos > last:
-                        # pre-match fragment
-                        tag = "class:select" if is_sel else ""
-                        tokens.append((tag, m[last:pos]))
-                    # the matched character
-                    tag = "class:match"
-                    #if is_sel:
-                    #    tag += " class:select"
-                    tokens.append((tag, m[pos]))
-                    last = pos + 1
-
-                # any trailing text
-                if last < len(m):
+            name = m.name
+            idxs = match_indices.get(name, [])
+            last = 0
+            for pos in idxs:
+                if pos > last:
                     tag = "class:select" if is_sel else ""
-                    tokens.append((tag, m[last:]))
+                    tokens.append((tag, name[last:pos]))
+                tokens.append(("class:match", name[pos]))
+                last = pos + 1
+            if last < len(name):
+                tag = "class:select" if is_sel else ""
+                tokens.append((tag, name[last:]))
 
-                # finally the newline
-                tokens.append(("", "\n"))
+            if m.decoration:
+                tokens.append(("class:decoration", f" {m.decoration}"))
+            tokens.append(('', "\n"))
 
-        return tokens 
- 
-    prompt_win = Window(height=1,
-                        content=FormattedTextControl('? ' + prompt))
+        return tokens
 
+    prompt_win = Window(height=1, content=FormattedTextControl('? ' + prompt))
     input_row = VSplit([
         Window(width=2, content=FormattedTextControl("❯ ")),
         Window(height=1, content=BufferControl(buffer=buf)),
-    ])    
-
-    menu_win   = Window(
-        content=FormattedTextControl(get_menu_tokens),
-        wrap_lines=False,
-        height=Dimension(max=max_rows)
-    )
+    ])
+    menu_win = Window(content=FormattedTextControl(get_menu_tokens),
+                      wrap_lines=False,
+                      height=Dimension(max=max_rows))
 
     root = HSplit([prompt_win, input_row, menu_win])
-    app  = Application(layout=Layout(root),
-                       key_bindings=kb,
-                       style=style,
-                       full_screen=False,
-                       erase_when_done=True)
+    app = Application(layout=Layout(root),
+                      key_bindings=kb,
+                      style=style,
+                      full_screen=False,
+                      erase_when_done=True)
 
-    # How long (in seconds) to distinguish a bare ESC from an ANSI‐sequence start.
-    # By default PromptToolkit uses 0.5 s; Vim’s ttimeoutlen is in milliseconds.
-    app.ttimeoutlen = 0.0001   # e.g. 150 ms
-
-    # How long to wait for a multi‐key binding to complete (like “AB” vs “A”).
-    # Defaults to 1.0 s; set to None to disable or a smaller float to tighten it.
-    app.timeoutlen = None     # e.g. 500 ms
+    app.ttimeoutlen = 0.0001
+    app.timeoutlen = None
 
     selection, created = app.run()
-    if not create_new:
-        created = False
 
-    if selection and not created and choices_dict:
-        # If we started with dicts, return the value instead of the name
-        selection = {"name": selection,
-                     "value": choices_dict[selection]}
-
-        print_formatted_text(
-            HTML(f"? {prompt} <ansiblue>{selection.get('name')}</ansiblue>")
-        )
-    else:
-
-        if created:
-            selection = selection[len("Create new: "):]
-
-        print_formatted_text(
-            HTML(f"? {prompt} <ansiblue>{selection}</ansiblue>{' <ansimagenta>*NEW*</ansimagenta>' if created else ''}")
-        )
+    print_formatted_text(
+        HTML(f"? {prompt} <ansiblue>{selection}</ansiblue>{' <ansimagenta>*NEW*</ansimagenta>' if created else ''}")
+    )
 
     return selection, created
