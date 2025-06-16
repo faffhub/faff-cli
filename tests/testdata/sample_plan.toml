@@ -2,12 +2,12 @@ source = "local"
 valid_from = "2025-03-20"
 valid_until = "2025-04-01"
 
-[[buckets]]
+[[trackers]]
 id = "work:admin"
 name = "Admin"
 metadata = { project = "internal" }
 
-[[buckets]]
+[[trackers]]
 id = "client:projectx"
 name = "Client Work"
 metadata = { client = "ProjectX Ltd" }

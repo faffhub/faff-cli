@@ -1,21 +1,14 @@
 import typer
 
-from InquirerPy import inquirer
-
-from faff_cli import log, connection, id, source, plan, compiler, start
+from faff_cli import log, id, source, plan, compiler, start
 from faff_cli.utils import edit_file
-from faff_cli.ui import fuzzy_select
 
 from faff.core import Workspace
-from faff_cli.utils import resolve_natural_date
-
-from faff.models import Intent
 
 cli = typer.Typer()
 
 cli.add_typer(log.app, name="log")
 cli.add_typer(source.app, name="source")
-cli.add_typer(connection.app, name="connection")
 cli.add_typer(compiler.app, name="compiler")
 cli.add_typer(id.app, name="id")
 cli.add_typer(plan.app, name="plan")
@@ -23,8 +16,7 @@ cli.add_typer(start.app, name="start")
 
 """
 faff init                         # initialise faff repository        ✅
-faff plan                         # show today's buckets           ✅
-faff start <bucket-id> [note]   # start work                        ✅
+faff plan                         # show today's intents             ✅
 faff stop                         # stop current task                 ✅
 faff status                       # show working state                ✅
 faff log                          # show today's log                  ✅
@@ -34,7 +26,6 @@ faff pull                         # fetch latest plans                ✅
 faff compile                      # compile today's work
 faff push                         # submit timesheet
 faff config edit                  # edit faff config                  ✅
-faff connection list              # see configured connections        ✅
 """
 
 @cli.callback()
@@ -106,20 +97,3 @@ def stop(ctx: typer.Context):
     """
     ws = ctx.obj
     typer.echo(ws.logs.stop_current_timeline_entry())
-
-
-
-@cli.command()
-def pull(ctx: typer.Context, date: str = typer.Argument(None)):
-    """
-    cli: faff pull
-    Pull planned buckets from all sources.
-    """
-    ws = ctx.obj
-
-    resolved_date = resolve_natural_date(ws.today(), date)
-
-    sources = ws.plans.sources()
-    for source in sources:
-        plan = source.pull_plan(resolved_date)
-        ws.plans.write_plan(plan)

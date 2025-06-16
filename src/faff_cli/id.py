@@ -9,7 +9,7 @@ faff id list
 @app.command(name="list") # To avoid conflict with list type
 def list_ids(ctx: typer.Context):
     """
-    Show the available sources.
+    Show the available ids.
     """
     ws = ctx.obj
     ids = ws.identities.get()

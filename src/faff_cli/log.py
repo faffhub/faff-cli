@@ -4,6 +4,8 @@ from faff.core import PrivateLogFormatter
 
 from faff_cli.utils import edit_file
 
+from faff_cli.utils import resolve_natural_date
+
 app = typer.Typer(help="View, edit, and interact with private logs.")
 
 """
@@ -11,8 +13,6 @@ faff log
 faff log edit
 faff log refresh
 """
-
-from faff_cli.utils import resolve_natural_date
 
 @app.command()
 def show(ctx: typer.Context, date: str = typer.Argument(None)):
@@ -24,7 +24,7 @@ def show(ctx: typer.Context, date: str = typer.Argument(None)):
     resolved_date = resolve_natural_date(ws.today(), date)
 
     log = ws.logs.get_log(resolved_date)
-    typer.echo(PrivateLogFormatter.format_log(log, ws.plans.get_buckets(log.date)))
+    typer.echo(PrivateLogFormatter.format_log(log, ws.plans.get_trackers(log.date)))
 
 @app.command(name="list") # To avoid conflict with list type
 def log_list(ctx: typer.Context):
@@ -41,9 +41,9 @@ def rm(ctx: typer.Context, date: str):
     cli: faff log rm
     Remove the log for today.
     """
-    ws = ctx.obj
+    # ws = ctx.obj
 
-    resolved_date = resolve_natural_date(ws.today(), date)
+    # resolved_date = resolve_natural_date(ws.today(), date)
 
     # TODO: Implement the remove functionality
 
@@ -56,7 +56,7 @@ def rm(ctx: typer.Context, date: str):
 def edit(ctx: typer.Context, date: str = typer.Argument(None)):
     """
     cli: faff log edit
-    Log your buckets for the day by opening a file in your preferred editor.
+    Edit the log for the specified date, defaulting to today, in your default editor.
     """
     ws = ctx.obj
 

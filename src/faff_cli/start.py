@@ -1,15 +1,98 @@
 import typer
+from typing import Sequence, Dict
 
-from InquirerPy import inquirer
+from titlecase import titlecase
 
-from faff_cli.ui import fuzzy_select
+
+from faff_cli.ui import FuzzyItem, fuzzy_select
 
 from faff.core import Workspace
-from faff_cli.utils import resolve_natural_date
 
 from faff.models import Intent
 
 app = typer.Typer(help="Start a new task or activity.")
+
+
+def prettify_path_label(path: str) -> str:
+    namespace = path.split(":")[0]
+    path = path[len(namespace) + 1:] if namespace else path
+    parts = path.strip("/").split("/")
+    if not parts:
+        return ""
+
+    *prefix, raw_name = parts
+    name = raw_name.replace("-", " ")
+    name = titlecase(name)
+    context = "/".join(prefix)
+
+    return f"{name} ({namespace}:{path})" if context else name
+
+
+def nicer(strings: Sequence[str]) -> list[str | FuzzyItem]:
+    return [
+        FuzzyItem(name=prettify_path_label(s), value=s, decoration=s)
+        for s in strings
+    ]
+
+def nicer_tracker(strings: Sequence[str], ws: Workspace) -> list[str | FuzzyItem]:
+    trackers = ws.plans.get_trackers(ws.today())
+    return [
+        FuzzyItem(name=trackers.get(s, ''), value=s, decoration=s)
+        for s in strings
+    ]
+
+def input_new_intent(alias: str, ws: Workspace) -> Intent:
+    """
+    Prompt the user for details to create a new intent.
+    """
+    date = ws.today()
+
+    role = fuzzy_select(
+        "What job role are you playing in this activity?",
+        nicer([x for x in ws.plans.get_roles(date)])
+    )
+    objective = fuzzy_select(
+        "What is the main goal of this activity?",
+        nicer([x for x in ws.plans.get_objectives(date)])
+    )
+    action = fuzzy_select(
+        "What action are you doing?",
+         nicer([x for x in ws.plans.get_actions(date)])
+)
+    subject = fuzzy_select(
+        "Who or what is this for or about?",
+        nicer([x for x in ws.plans.get_subjects(date)])
+    )
+
+    trackers: Dict[str, str] = {}
+    ingesting_trackers = True
+
+    while ingesting_trackers:
+        tracker_id = fuzzy_select(
+            prompt="Please add any third-party trackers to attach (esc to finish):",
+            choices=nicer_tracker([x for x in ws.plans.get_trackers(date)], ws),
+        )
+        if tracker_id:
+            tracker_name = ws.plans.get_trackers(date).get(tracker_id.value)
+            trackers[tracker_id.value] = tracker_name if tracker_name else tracker_id.value
+        else:
+            ingesting_trackers = False
+
+    local_plan = ws.plans.local_plan(date)
+
+    new_intent = Intent(
+        alias=alias,
+        role=role.value if role else None,
+        objective=objective.value if objective else None,
+        action=action.value if action else None,
+        subject=subject.value if subject else None,
+        trackers=trackers
+    ) 
+
+    new_plan = local_plan.add_intent(new_intent)
+    ws.plans.write_plan(new_plan)
+
+    return new_intent   
 
 @app.callback(invoke_without_command=True)
 def start(ctx: typer.Context):
@@ -18,123 +101,35 @@ def start(ctx: typer.Context):
     ws = ctx.obj
     date = ws.today()
 
-    intents = ws.plans.get_intents(date)
-    x = []
+    existing_intents = ws.plans.get_intents(date)
 
-    def decorate_intent(intent):
-        if intent.activity == "VARIABLE":
-            return "[TEMPLATE] (activity: x, y, z...)"
-        elif intent.beneficiary == "VARIABLE":
-            return "[TEMPLATE] (for: x, y, z...)"
+    chosen_intent = fuzzy_select(
+        prompt="What are you doing?",
+        choices=intents_to_choices(existing_intents),
+        escapable=False,
+        slugify_new=False,
+        )
+
+    # If the intent is new, we'll want to prompt for details.
+    if not chosen_intent:
+        typer.echo("aborting")
+        return
+    if chosen_intent.is_new:
+        intent = input_new_intent(chosen_intent.value, ws)
+    elif not chosen_intent.is_new:
+        intent = chosen_intent.value
+    
+    note = input("? Note (optional): ")
+    typer.echo(ws.logs.start_intent_now(intent, None, note))
+
+def intents_to_choices(intents):
+    choices = []
 
     for intent in intents:
-        x.append({
+        choices.append({
             "name": intent.alias,
             "value": intent,
-            "decoration": decorate_intent(intent)
+            "decoration": None
         })
 
-    def decorate_entity(entity):
-        try:
-            scope, thing = entity.rsplit("/", 1)
-        except ValueError:
-            scope, thing = None, entity
-        
-        return {
-            "name": thing,
-            "value": entity,
-            "decoration": f"({scope})"
-        }
-
-    VARIABLE = {
-        "name": "[VARIABLE]",
-        "value": "VARIABLE",
-        "decoration": "(will change each time you record this activity)"
-    }
-
-    def thingify(x):
-        return {
-            "name": x,
-            "value": x,
-            "decoration": None
-        }
-
-    buckets = ws.plans.get_buckets(ws.today())
-
-    intent, new_intent = fuzzy_select(prompt="Intent:", choices=x, escapable=True)
-    if new_intent or not intent:
-        # No intent found, so we need to create a new one.
-        activity, new = fuzzy_select("I am doing:", [decorate_entity(x) for x in ws.plans.get_activities(date)] + [VARIABLE])
-        role, new = fuzzy_select("as:", [decorate_entity(x) for x in ws.plans.get_roles(date)])
-        goal, new = fuzzy_select("to achieve:", [decorate_entity(x) for x in ws.plans.get_goals(date)])
-        beneficiary, new = fuzzy_select("for:", [thingify(x) for x in ws.plans.get_beneficiaries(date)] + [VARIABLE])
-
-        choices = [
-            {
-                "name": f"{a.name}",
-                "value": a,
-                "decoration": f"({ws.plans.get_plan_by_bucket_id(a.id, date).source})"
-            }
-            for a in buckets.values()
-        ]
-        bucket, _ = fuzzy_select(
-            prompt="Tracked under (esc for none):",
-            choices=choices,
-            create_new=False,
-            escapable=True
-        )
-
-        if new_intent:
-            alias = intent
-        else: 
-            suggested_name = f"{role}: {activity[0].upper() + activity[1:]} to {goal} for {beneficiary}"
-            alias, _ = fuzzy_select(
-                prompt="Name (esc for none):",
-                choices=[suggested_name],
-                create_new=True,
-                escapable=True
-            )
-
-        local_plan = ws.plans.local_plan(date)
-            
-        new_intent = Intent(
-            alias=alias,
-            role=role,
-            activity=activity,
-            goal=goal,
-            beneficiary=beneficiary,
-            bucket_id=bucket.id if bucket else None
-        )
-
-        new_plan = local_plan.add_intent(new_intent)
-        ws.plans.write_plan(new_plan)
-
-        note = input("? Note (optional): ")
-        typer.echo(ws.logs.start_intent_now(new_intent, None, note))
-
-    else:
-        # intent = intent.value
-        # We have an existing intent, so we can use that.
-        activity = intent.activity
-        if activity == "VARIABLE":
-            activity, new = fuzzy_select("I am doing:", [decorate_entity(x) for x in ws.plans.get_activities(date)])
-        role = intent.role
-        goal = intent.goal
-        beneficiary = intent.beneficiary
-        if beneficiary == "VARIABLE":
-            beneficiary, new = fuzzy_select("for:", [thingify(x) for x in ws.plans.get_beneficiaries(date)])
-        alias = intent.alias
-        bucket = buckets.get(intent.bucket_id)
-
-        note = input("? Note (optional): ")
-
-        complete_intent = Intent(
-            alias=alias,
-            role=role,
-            activity=activity,
-            goal=goal,
-            beneficiary=beneficiary,
-            bucket_id=bucket.id if bucket else None
-        )
-
-        typer.echo(ws.logs.start_intent_now(complete_intent, None, note))
+    return choices

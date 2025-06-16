@@ -16,10 +16,7 @@ def edit_file(path: Path) -> bool:
     # pre_edit_hash = path.read_text().__hash__()
 
     # Open the file in the editor
-    try:
-        subprocess.run([editor, str(path)], check=True)
-    except FileNotFoundError:
-        return
+    subprocess.run([editor, str(path)], check=True)
 
     post_edit = path.read_text()
     # post_edit_hash = path.read_text().__hash__()
@@ -52,7 +49,10 @@ def resolve_natural_date(today: pendulum.Date, arg: str | None) -> pendulum.Date
     if weekday is not None:
         return today.previous(weekday)
     
-    try:
-        return pendulum.parse(arg).date()
-    except Exception:
+    parsed = pendulum.parse(arg)
+    if isinstance(parsed, pendulum.DateTime):
+        return parsed.date()
+    elif isinstance(parsed, pendulum.Date):
+        return parsed
+    else:
         raise typer.BadParameter(f"Unrecognized date: '{arg}'")
