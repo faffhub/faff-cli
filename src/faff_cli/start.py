@@ -1,5 +1,5 @@
 import typer
-from typing import Sequence, Dict
+from typing import Sequence, List
 
 from titlecase import titlecase
 
@@ -64,17 +64,16 @@ def input_new_intent(alias: str, ws: Workspace) -> Intent:
         nicer([x for x in ws.plans.get_subjects(date)])
     )
 
-    trackers: Dict[str, str] = {}
+    trackers: List[str] = []
     ingesting_trackers = True
 
     while ingesting_trackers:
         tracker_id = fuzzy_select(
             prompt="Please add any third-party trackers to attach (esc to finish):",
-            choices=nicer_tracker([x for x in ws.plans.get_trackers(date)], ws),
+            choices = nicer_tracker([x for x in ws.plans.get_trackers(date) if x not in trackers], ws)
         )
         if tracker_id:
-            tracker_name = ws.plans.get_trackers(date).get(tracker_id.value)
-            trackers[tracker_id.value] = tracker_name if tracker_name else tracker_id.value
+            trackers.append(tracker_id.value)
         else:
             ingesting_trackers = False
 

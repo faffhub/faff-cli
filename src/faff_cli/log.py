@@ -53,7 +53,9 @@ def rm(ctx: typer.Context, date: str):
     #    typer.echo(f"No log found for {resolved_date}.")
 
 @app.command()
-def edit(ctx: typer.Context, date: str = typer.Argument(None)):
+def edit(ctx: typer.Context,
+         date: str = typer.Argument(None),
+         force: bool = typer.Option(False, "--force")):
     """
     cli: faff log edit
     Edit the log for the specified date, defaulting to today, in your default editor.
@@ -63,13 +65,15 @@ def edit(ctx: typer.Context, date: str = typer.Argument(None)):
     resolved_date = resolve_natural_date(ws.today(), date)
 
     # Process the log to ensure it's correctly formatted for reading
-    ws.logs.write_log(ws.logs.get_log(resolved_date))
+    if not force:
+        ws.logs.write_log(ws.logs.get_log(resolved_date))
 
     if edit_file(ws.fs.log_path(resolved_date)):
         typer.echo("Log file updated.")
 
         # Process the edited file again after editing
-        ws.logs.write_log(ws.logs.get_log(resolved_date))
+        if not force:
+            ws.logs.write_log(ws.logs.get_log(resolved_date))
     else:
         typer.echo("No changes detected.")
 
