@@ -13,7 +13,7 @@ def audiences(ctx: typer.Context):
     """
     ws: Workspace = ctx.obj
 
-    compilers = ws.audiences.audience_compilers()
+    compilers = ws.timesheets.audiences()
     typer.echo(f"Found {len(compilers)} configured timesheet compiler(s):")
     for compiler in compilers:
         typer.echo(f"- {compiler.id} {compiler.__class__.__name__}")
@@ -28,7 +28,7 @@ def compile(ctx: typer.Context, date: str = typer.Argument(None)):
     
     log = ws.logs.get_log(resolved_date)
 
-    compilers = ws.audiences.audience_compilers()
+    compilers = ws.timesheets.audiences()
     for compiler in compilers:
         compiled_timesheet = compiler.compile_time_sheet(log)
         key = ws.identities.get_identity("tom@element.io")
