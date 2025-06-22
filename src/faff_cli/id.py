@@ -1,5 +1,7 @@
 import typer
 
+from faff.core import Workspace
+
 app = typer.Typer(help="View, edit, and interact with identities.")
 
 """
@@ -11,7 +13,7 @@ def list_ids(ctx: typer.Context):
     """
     Show the available ids.
     """
-    ws = ctx.obj
+    ws: Workspace = ctx.obj
     ids = ws.identities.get()
     typer.echo(f"Found {len(ids)} ID(s) configured:")
     for id in ids.keys():
