@@ -8,7 +8,7 @@ from faff_cli.ui import FuzzyItem, fuzzy_select
 
 from faff.core import Workspace
 
-from faff.models import Intent
+from faff_core.models import Intent
 
 app = typer.Typer(help="Start a new task or activity.")
 

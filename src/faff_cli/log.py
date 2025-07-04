@@ -1,7 +1,7 @@
 import typer
 
 from faff.core import PrivateLogFormatter, Workspace
-from faff.models import Intent
+from faff_core.models import Intent
 
 from faff_cli.utils import edit_file
 
@@ -108,12 +108,12 @@ def summary(ctx: typer.Context, date: str = typer.Argument(None)):
             end_time = session.end
         duration = end_time - session.start
 
-        if session.intent() not in intent_tracker:
-            intent_tracker[session.intent()] = pendulum.duration(0)
+        if session.intent not in intent_tracker:
+            intent_tracker[session.intent] = pendulum.duration(0)
 
-        intent_tracker[session.intent()] += duration
+        intent_tracker[session.intent] += duration
 
-        for tracker in session.trackers:
+        for tracker in session.intent.trackers:
             if tracker not in tracker_totals:
                 tracker_totals[tracker] = pendulum.duration(0)
 
