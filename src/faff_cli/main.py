@@ -60,12 +60,18 @@ def compile(ctx: typer.Context, date: str = typer.Argument(None)):
         ws.timesheets.write_timesheet(plugin, ws.today())
 
 @cli.command()
+def rust(ctx: typer.Context):
+    import faff_core
+    print(faff_core.hello_world())
+
+
+@cli.command()
 def status(ctx: typer.Context):
     """
     cli: faff status
     Show the status of the faff repository.
     """
-    ws = ctx.obj
+    ws: Workspace = ctx.obj
     typer.echo(f"Status for faff repo root at: {ws.fs.find_faff_root()}")
 
     log = ws.logs.get_log(ws.today())
@@ -73,6 +79,7 @@ def status(ctx: typer.Context):
 
     active_session = log.active_session()
     if active_session:
+        typer.echo(f"Currently working on {active_session.alias}.")
         duration = ws.now() - active_session.start
         if active_session.note:
             typer.echo(f"Working on {active_session.alias} (\"{active_session.note}\") for {duration.in_words()}")
