@@ -1,5 +1,7 @@
 from slugify import slugify
 
+import html
+
 from prompt_toolkit import Application
 from prompt_toolkit.buffer import Buffer
 from prompt_toolkit.layout import Layout, HSplit, Window, VSplit
@@ -208,8 +210,9 @@ def fuzzy_select(prompt: str,
 
     selection = app.run()
 
-    print_formatted_text(
-        HTML(f"? {prompt} <ansiblue>{selection}</ansiblue>{' <ansimagenta>*NEW*</ansimagenta>' if selection and selection.is_new else ''}")
-    )
+    if selection:
+        print_formatted_text(
+            HTML(f"? {prompt} <ansiblue>{html.escape(selection.name)}</ansiblue>{' <ansimagenta>*NEW*</ansimagenta>' if selection and selection.is_new else ''}")
+        )
 
     return selection
