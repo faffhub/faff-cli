@@ -5,6 +5,8 @@ from faff_cli.utils import edit_file
 
 from faff.core import Workspace
 
+from pathlib import Path
+
 cli = typer.Typer()
 
 cli.add_typer(log.app, name="log")
@@ -20,16 +22,23 @@ def main(ctx: typer.Context):
     ctx.obj = Workspace()
 
 @cli.command()
-def init(ctx: typer.Context):
+def init(ctx: typer.Context,
+         target_dir_str: str,
+         force: bool = typer.Option(False, "--force", help="Allow init inside a parent faff repo")):
     """
     cli: faff init
     Initialise faff obj.
     """
     ws: Workspace = ctx.obj
 
+    target_dir = Path(target_dir_str)
+    if not target_dir.exists():
+        typer.echo(f"Target directory {target_dir} does not exist.")
+        exit(1)
+
     typer.echo("Initialising faff repository.")
-    ws.fs.initialise_repo()
-    faff_root = ws.fs.find_faff_root()
+    ws.fs.initialise_repo(target_dir, force)
+    faff_root = ws.fs.find_faff_root(target_dir)
     if faff_root:
         typer.echo(f"Initialised faff repository at {faff_root}.")
     else:
@@ -84,7 +93,7 @@ def status(ctx: typer.Context):
     Show the status of the faff repository.
     """
     ws: Workspace = ctx.obj
-    typer.echo(f"Status for faff repo root at: {ws.fs.find_faff_root()}")
+    typer.echo(f"Status for faff repo root at: {ws.fs.FAFF_ROOT}")
 
     log = ws.logs.get_log(ws.today())
     typer.echo(f"Total recorded time for today: {log.total_recorded_time().in_words()}")
