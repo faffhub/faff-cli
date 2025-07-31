@@ -64,6 +64,18 @@ def rust(ctx: typer.Context):
     import faff_core
     print(faff_core.hello_world())
 
+    from faff_core.models import Toy
+
+    t = Toy("Hello from Rust via an object!")
+    print(t.hello())
+
+    a = Toy("toy")
+    b = Toy("toy")
+    print(a==b)
+    print(a.__hash__(), b.__hash__())
+    print(a==2)
+    print(b==Toy("toy"))
+
 
 @cli.command()
 def status(ctx: typer.Context):
@@ -79,12 +91,12 @@ def status(ctx: typer.Context):
 
     active_session = log.active_session()
     if active_session:
-        typer.echo(f"Currently working on {active_session.alias}.")
+        typer.echo(f"Currently working on {active_session.intent.alias}.")
         duration = ws.now() - active_session.start
         if active_session.note:
-            typer.echo(f"Working on {active_session.alias} (\"{active_session.note}\") for {duration.in_words()}")
+            typer.echo(f"Working on {active_session.intent.alias} (\"{active_session.note}\") for {duration.in_words()}")
         else:
-            typer.echo(f"Working on {active_session.alias} for {duration.in_words()}")
+            typer.echo(f"Working on {active_session.intent.alias} for {duration.in_words()}")
     else:
         typer.echo("Not currently working on anything.")
 

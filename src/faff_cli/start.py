@@ -97,7 +97,7 @@ def input_new_intent(alias: str, ws: Workspace) -> Intent:
 def start(ctx: typer.Context):
     ctx.obj = Workspace()
 
-    ws = ctx.obj
+    ws: Workspace = ctx.obj
     date = ws.today()
 
     existing_intents = ws.plans.get_intents(date)
