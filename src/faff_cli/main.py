@@ -1,4 +1,5 @@
 import typer
+import humanize
 
 from faff_cli import log, id, source, plan, compiler, start, timesheet
 from faff_cli.utils import edit_file
@@ -70,20 +71,19 @@ def compile(ctx: typer.Context, date: str = typer.Argument(None)):
 
 @cli.command()
 def rust(ctx: typer.Context):
+
+    ws: Workspace = ctx.obj
+
     import faff_core
     print(faff_core.hello_world())
 
     from faff_core.models import Toy
 
     t = Toy("Hello from Rust via an object!")
-    print(t.hello())
-
-    a = Toy("toy")
-    b = Toy("toy")
-    print(a==b)
-    print(a.__hash__(), b.__hash__())
-    print(a==2)
-    print(b==Toy("toy"))
+    # print(t.do_a_datetime(ws.now()))
+    import datetime
+    import zoneinfo
+    print(repr(t.add_days(datetime.datetime.now(zoneinfo.ZoneInfo("Europe/London")), 5)))
 
 
 @cli.command()
@@ -96,16 +96,16 @@ def status(ctx: typer.Context):
     typer.echo(f"Status for faff repo root at: {ws.fs.FAFF_ROOT}")
 
     log = ws.logs.get_log(ws.today())
-    typer.echo(f"Total recorded time for today: {log.total_recorded_time().in_words()}")
+    typer.echo(f"Total recorded time for today: {humanize.precisedelta(log.total_recorded_time(),minimum_unit='minutes')}")
 
     active_session = log.active_session()
     if active_session:
         typer.echo(f"Currently working on {active_session.intent.alias}.")
         duration = ws.now() - active_session.start
         if active_session.note:
-            typer.echo(f"Working on {active_session.intent.alias} (\"{active_session.note}\") for {duration.in_words()}")
+            typer.echo(f"Working on {active_session.intent.alias} (\"{active_session.note}\") for {humanize.precisedelta(duration)}")
         else:
-            typer.echo(f"Working on {active_session.intent.alias} for {duration.in_words()}")
+            typer.echo(f"Working on {active_session.intent.alias} for {humanize.precisedelta(duration)}")
     else:
         typer.echo("Not currently working on anything.")
 

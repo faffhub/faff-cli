@@ -1,7 +1,7 @@
 import os
 import subprocess
-import pendulum
-import typer
+import dateparser
+from datetime import datetime, date, time
 
 from pathlib import Path
 
@@ -29,30 +29,24 @@ def edit_file(path: Path) -> bool:
 
     return pre_edit.strip() != post_edit.strip()
 
-def resolve_natural_date(today: pendulum.Date, arg: str | None) -> pendulum.Date:
-    if arg is None or arg.lower() == "today":
+def resolve_natural_date(today: date, arg: str | None) -> date:
+    """
+    Parse a natural-language date string and return a datetime.date.
+    Examples: "today", "yesterday", "last monday", "2025-08-03".
+    """
+    if arg is None or arg.strip().lower() == "today":
         return today
-    if arg.lower() == "yesterday":
-        return today.subtract(days=1)
-    
-    weekdays = {
-        "monday": pendulum.MONDAY,
-        "tuesday": pendulum.TUESDAY,
-        "wednesday": pendulum.WEDNESDAY,
-        "thursday": pendulum.THURSDAY,
-        "friday": pendulum.FRIDAY,
-        "saturday": pendulum.SATURDAY,
-        "sunday": pendulum.SUNDAY,
-    }
 
-    weekday = weekdays.get(arg.lower())
-    if weekday is not None:
-        return today.previous(weekday)
-    
-    parsed = pendulum.parse(arg)
-    if isinstance(parsed, pendulum.DateTime):
-        return parsed.date()
-    elif isinstance(parsed, pendulum.Date):
-        return parsed
-    else:
-        raise typer.BadParameter(f"Unrecognized date: '{arg}'")
+    dt = dateparser.parse(
+        arg,
+        settings={
+            "PREFER_DATES_FROM": "past",
+            "RELATIVE_BASE": datetime.combine(today, time.min),
+            # Optional, keeps things simple:
+            "RETURN_AS_TIMEZONE_AWARE": False,
+        },
+    )
+    if dt is None:
+        raise ValueError(f"Invalid date string: {arg}")
+
+    return dt.date()
