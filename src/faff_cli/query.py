@@ -138,7 +138,7 @@ def query(
             row.append(getattr(intent, filter.key) or "")
 
         t_row = tuple(row)
-        if row in summed_rows:
+        if t_row in summed_rows:
             summed_rows[t_row] += matching_intents[intent]
         else:
             summed_rows[t_row] = matching_intents[intent]
@@ -146,7 +146,7 @@ def query(
     summed_rows = dict(sorted(summed_rows.items(), key=lambda item: item[1], reverse=True))
 
     for summed_row in summed_rows:
-        table.add_row(*row, format_duration(summed_rows[summed_row]))
+        table.add_row(*summed_row, format_duration(summed_rows[summed_row]))
 
     table.add_section()
     total_duration = sum(summed_rows.values(), datetime.timedelta())
