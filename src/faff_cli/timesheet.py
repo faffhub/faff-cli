@@ -33,7 +33,9 @@ def compile(ctx: typer.Context, date: str = typer.Argument(None)):
         compiled_timesheet = compiler.compile_time_sheet(log)
         key = ws.identities.get_identity("tom@element.io")
         if key:
-            signed_sheet = compiled_timesheet.sign("tom@element.io", key)
+            # FIXME: Rust Timesheet.sign() takes bytes, but we should pass a proper SigningKey object
+            # This will be cleaned up when identity manager is ported to Rust
+            signed_sheet = compiled_timesheet.sign("tom@element.io", bytes(key))
             ws.timesheets.write_timesheet(signed_sheet)
             typer.echo(f"Compiled and signed timesheet for {resolved_date} using {compiler.id}.")
         else:
@@ -57,7 +59,11 @@ def list_timesheets(ctx: typer.Context):
         typer.echo(line)
 
 @app.command()
-def show(ctx: typer.Context, audience_id: str, date: str = typer.Argument(None)):
+def show(ctx: typer.Context, audience_id: str, date: str = typer.Argument(None), pretty: bool = typer.Option(
+        False,
+        "--pretty",
+        help="Pretty-print the output instead of canonical JSON (without whitespace)",
+    )):
     ws: Workspace = ctx.obj
     resolved_date = resolve_natural_date(ws.today(), date)
 
@@ -65,9 +71,10 @@ def show(ctx: typer.Context, audience_id: str, date: str = typer.Argument(None))
     import json
     if timesheet:
         data = json.loads(timesheet.submittable_timesheet().canonical_form().decode("utf-8"))
-        typer.echo(json.dumps(data, indent=2))
-
-
+        if pretty:
+            typer.echo(json.dumps(data, indent=2))
+        else:
+            typer.echo(data)
 
 @app.command()
 def submit(ctx: typer.Context, audience_id: str, date: str = typer.Argument(None)):
