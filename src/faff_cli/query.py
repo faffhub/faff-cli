@@ -37,11 +37,11 @@ def format_duration(td: datetime.timedelta) -> str:
 def gather_data(ws: Workspace,
                 from_date: Optional[datetime.date],
                 to_date: Optional[datetime.date],
-                filters: List['Filter']) -> Dict[Intent, datetime.timedelta]:
+                filters: List['Filter']) -> Dict[Tuple, datetime.timedelta]:
 
     # For each date in the range, get the log and filter entries
-    # all_entries = []
-    matching_intents: Dict[Intent, datetime.timedelta] = {}
+    # Group by the filter key values, not by intent
+    matching_sessions: Dict[Tuple, datetime.timedelta] = {}
     for log in ws.logs.list():
         if from_date and log.date < from_date:
             continue
@@ -50,13 +50,22 @@ def gather_data(ws: Workspace,
 
         for session in log.timeline:
             # If all filters match add to matches
-            if all(filter.matches(session.intent) for filter in filters):
-                if session.intent not in matching_intents:
-                    matching_intents[session.intent] = session.duration
-                else:
-                    matching_intents[session.intent] += session.duration
+            if all(filter.matches(session) for filter in filters):
+                # Create a key from the filter values
+                key_values = []
+                for filter in filters:
+                    if filter.key == 'note':
+                        key_values.append(session.note or "")
+                    else:
+                        key_values.append(getattr(session.intent, filter.key) or "")
 
-    return matching_intents
+                key = tuple(key_values)
+                if key not in matching_sessions:
+                    matching_sessions[key] = session.duration
+                else:
+                    matching_sessions[key] += session.duration
+
+    return matching_sessions
 
 @app.callback()
 def query(
@@ -122,7 +131,7 @@ def query(
 
     filters = [Filter.from_string(f) for f in filter_strings] if filter_strings else []
 
-    matching_intents = gather_data(ws, resolved_from_date, resolved_to_date, filters)
+    summed_rows = gather_data(ws, resolved_from_date, resolved_to_date, filters)
 
     # Display matches
     console = Console()
@@ -130,18 +139,6 @@ def query(
     for filter in filters:
         table.add_column(filter.key.capitalize())
     table.add_column("Duration", justify="right")
-
-    summed_rows: Dict[Tuple, datetime.timedelta] = {}
-    for intent in matching_intents:
-        row = []
-        for filter in filters:
-            row.append(getattr(intent, filter.key) or "")
-
-        t_row = tuple(row)
-        if t_row in summed_rows:
-            summed_rows[t_row] += matching_intents[intent]
-        else:
-            summed_rows[t_row] = matching_intents[intent]
 
     summed_rows = dict(sorted(summed_rows.items(), key=lambda item: item[1], reverse=True))
 
@@ -159,12 +156,12 @@ class Filter:
     def __init__(self, key: str, operator: str, value: str):
         if operator not in ['=', '~', '!=']:
             raise ValueError(f"Invalid operator: {operator}")
-        if key not in ['alias', 'role', 'objective', 'action', 'subject']:
+        if key not in ['alias', 'role', 'objective', 'action', 'subject', 'note']:
             raise ValueError(f"Invalid key: {key}")
         self.key = key
         self.operator = operator
         self.value = value
-        
+
     @classmethod
     def from_string(cls, filter_str: str) -> 'Filter':
         if '=' in filter_str:
@@ -179,16 +176,22 @@ class Filter:
         else:
             raise ValueError(f"Invalid filter format: {filter_str}")
 
-    def matches(self, intent: Intent) -> bool:
-        intent_value = getattr(intent, self.key, None)
-        if intent_value is None:
+    def matches(self, session) -> bool:
+        # Try session fields first (e.g., note), then intent fields
+        if self.key == 'note':
+            value = session.note or ""
+        else:
+            # For intent fields
+            value = getattr(session.intent, self.key, None)
+
+        if value is None:
             return False
 
         if self.operator == '=':
-            return intent_value == self.value
+            return value == self.value
         elif self.operator == '~':
-            return self.value in intent_value
+            return self.value.lower() in value.lower()
         elif self.operator == '!=':
-            return intent_value != self.value
+            return value != self.value
         else:
             return False
