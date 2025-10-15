@@ -1,4 +1,5 @@
 import typer
+import base64
 
 from faff.core import Workspace
 
@@ -26,4 +27,4 @@ def create(ctx: typer.Context, name: str, overwrite: bool = False):
     """
     ws = ctx.obj
     key = ws.identities.create_identity(name, overwrite)
-    typer.echo(f"Created identity '{name}' with public key {key.verify_key.encode()}")
+    typer.echo(f"Created identity '{name}' with public key {base64.b64encode(key.verify_key.encode()).decode()}")
