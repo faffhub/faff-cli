@@ -1,7 +1,7 @@
 import typer
 
 from faff_cli.utils import resolve_natural_date
-from faff.core import Workspace
+from faff_core import Workspace
 
 
 app = typer.Typer(help="Do Timesheet stuffs.")

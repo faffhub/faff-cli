@@ -3,8 +3,9 @@ import humanize
 
 from faff_cli import log, id, source, plan, compiler, start, timesheet
 from faff_cli.utils import edit_file
+from faff_cli.file_utils import FileSystemUtils
 
-from faff.core import Workspace
+from faff_core import Workspace
 
 from pathlib import Path
 
@@ -38,8 +39,8 @@ def init(ctx: typer.Context,
         exit(1)
 
     typer.echo("Initialising faff repository.")
-    ws.fs.initialise_repo(target_dir, force)
-    faff_root = ws.fs.find_faff_root(target_dir)
+    FileSystemUtils.initialise_repo(target_dir, force)
+    faff_root = FileSystemUtils.find_faff_root(target_dir)
     if faff_root:
         typer.echo(f"Initialised faff repository at {faff_root}.")
     else:
@@ -53,7 +54,7 @@ def config(ctx: typer.Context):
     Edit the faff configuration in your preferred editor.
     """
     ws = ctx.obj
-    if edit_file(ws.fs.CONFIG_PATH):
+    if edit_file(FileSystemUtils.get_config_path()):
         typer.echo("Configuration file was updated.")
     else:
         typer.echo("No changes detected.")
@@ -93,7 +94,7 @@ def status(ctx: typer.Context):
     Show the status of the faff repository.
     """
     ws: Workspace = ctx.obj
-    typer.echo(f"Status for faff repo root at: {ws.fs.FAFF_ROOT}")
+    typer.echo(f"Status for faff repo root at: {FileSystemUtils.get_faff_root()}")
 
     log = ws.logs.get_log(ws.today())
     typer.echo(f"Total recorded time for today: {humanize.precisedelta(log.total_recorded_time(),minimum_unit='minutes')}")

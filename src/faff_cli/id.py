@@ -1,7 +1,7 @@
 import typer
 import base64
 
-from faff.core import Workspace
+from faff_core import Workspace
 
 app = typer.Typer(help="View, edit, and interact with identities.")
 

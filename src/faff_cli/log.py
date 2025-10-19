@@ -4,10 +4,12 @@ from typing import List, Optional
 
 from faff_cli import query
 
-from faff.core import PrivateLogFormatter, Workspace
+from faff_core import Workspace
 from faff_core.models import Intent
 
+from faff_cli.private_log_formatter import PrivateLogFormatter
 from faff_cli.utils import edit_file
+from faff_cli.file_utils import FileSystemUtils
 
 from faff_cli.utils import resolve_natural_date
 
@@ -81,14 +83,18 @@ def edit(ctx: typer.Context,
 
     # Process the log to ensure it's correctly formatted for reading
     if not skip_validation:
-        ws.logs.write_log(ws.logs.get_log(resolved_date))
+        log = ws.logs.get_log(resolved_date)
+        trackers = ws.plans.get_trackers(resolved_date)
+        ws.logs.write_log(log, trackers)
 
-    if edit_file(ws.fs.log_path(resolved_date)):
+    if edit_file(FileSystemUtils.get_log_path(resolved_date)):
         typer.echo("Log file updated.")
 
         # Process the edited file again after editing
         if not skip_validation:
-            ws.logs.write_log(ws.logs.get_log(resolved_date))
+            log = ws.logs.get_log(resolved_date)
+            trackers = ws.plans.get_trackers(resolved_date)
+            ws.logs.write_log(log, trackers)
     else:
         typer.echo("No changes detected.")
 
@@ -164,5 +170,7 @@ def refresh(ctx: typer.Context, date: str = typer.Argument(None)):
     else:
         date = ws.today()
 
-    ws.logs.write_log(ws.logs.get_log(date))
+    log = ws.logs.get_log(date)
+    trackers = ws.plans.get_trackers(date)
+    ws.logs.write_log(log, trackers)
     typer.echo("Log refreshed.")

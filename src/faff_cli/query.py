@@ -2,7 +2,7 @@ import typer
 
 from typing import List, Optional, Tuple
 
-from faff.core import Workspace
+from faff_core import Workspace
 from faff_core.models import Intent
 
 from faff_cli.utils import resolve_natural_date

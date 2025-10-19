@@ -6,7 +6,7 @@ from titlecase import titlecase
 
 from faff_cli.ui import FuzzyItem, fuzzy_select
 
-from faff.core import Workspace
+from faff_core import Workspace
 
 from faff_core.models import Intent
 
@@ -119,7 +119,7 @@ def start(ctx: typer.Context):
         intent = chosen_intent.value
     
     note = input("? Note (optional): ")
-    typer.echo(ws.logs.start_intent_now(intent, None, note))
+    typer.echo(ws.logs.start_intent_now(intent, note if note else None))
 
 def intents_to_choices(intents):
     choices = []

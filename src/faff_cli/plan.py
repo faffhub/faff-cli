@@ -1,9 +1,7 @@
 import typer
 
 from faff_cli.utils import resolve_natural_date
-from faff.core import Workspace
-
-from faff.core import TomlSerializer
+from faff_core import Workspace
 
 app = typer.Typer(help="View, edit, and interact with downloaded plans.")
 
@@ -50,7 +48,7 @@ def show(ctx: typer.Context,
     plans = ws.plans.get_plans(resolved_date).values()
     for plan in plans:
         typer.echo(f"Plan: {plan.source} (valid from {plan.valid_from})")
-        print(TomlSerializer.serialize(plan))
+        print(plan.to_toml())
 
 @app.command()
 def pull(ctx: typer.Context, remote_id: str = typer.Argument(None)):
