@@ -5,9 +5,17 @@ version = "0.1.0"
 description = "A local-first time tracking CLI with decentralized protocol aspirations."
 authors = [{name="Thomas Lant", email="thomas@lant.uk"}]
 license = { text = "AGPL-3.0-or-later" }
+requires-python = ">=3.9"
 dependencies = [
+    "faff-core",
     "typer[all]",
     "rich",
+    "python-slugify",
+    "titlecase",
+    "prompt-toolkit",
+    "pfzy",
+    "dateparser",
+    "humanize",
     "tomli; python_version<'3.11'"
 ]
 
