@@ -36,7 +36,7 @@ def show(ctx: typer.Context, date: str = typer.Argument(None)):
     ws = ctx.obj
     resolved_date = resolve_natural_date(ws.today(), date)
 
-    log = ws.logs.get_log(resolved_date)
+    log = ws.logs.get_log_or_create(resolved_date)
     typer.echo(PrivateLogFormatter.format_log(log, ws.plans.get_trackers(log.date)))
 
 @app.command(name="list") # To avoid conflict with list type
@@ -83,7 +83,7 @@ def edit(ctx: typer.Context,
 
     # Process the log to ensure it's correctly formatted for reading
     if not skip_validation:
-        log = ws.logs.get_log(resolved_date)
+        log = ws.logs.get_log_or_create(resolved_date)
         trackers = ws.plans.get_trackers(resolved_date)
         ws.logs.write_log(log, trackers)
 
@@ -92,7 +92,7 @@ def edit(ctx: typer.Context,
 
         # Process the edited file again after editing
         if not skip_validation:
-            log = ws.logs.get_log(resolved_date)
+            log = ws.logs.get_log_or_create(resolved_date)
             trackers = ws.plans.get_trackers(resolved_date)
             ws.logs.write_log(log, trackers)
     else:
@@ -108,7 +108,7 @@ def summary(ctx: typer.Context, date: str = typer.Argument(None)):
     ws: Workspace = ctx.obj
     resolved_date: datetime.date = resolve_natural_date(ws.today(), date)
 
-    log = ws.logs.get_log(resolved_date)
+    log = ws.logs.get_log_or_create(resolved_date)
 
     trackers = ws.plans.get_trackers(log.date)
 
@@ -170,7 +170,7 @@ def refresh(ctx: typer.Context, date: str = typer.Argument(None)):
     else:
         date = ws.today()
 
-    log = ws.logs.get_log(date)
+    log = ws.logs.get_log_or_create(date)
     trackers = ws.plans.get_trackers(date)
     ws.logs.write_log(log, trackers)
     typer.echo("Log refreshed.")

@@ -26,7 +26,7 @@ def compile(ctx: typer.Context, date: str = typer.Argument(None)):
     ws: Workspace = ctx.obj
     resolved_date = resolve_natural_date(ws.today(), date)
     
-    log = ws.logs.get_log(resolved_date)
+    log = ws.logs.get_log_or_create(resolved_date)
 
     compilers = ws.timesheets.audiences()
     for compiler in compilers:

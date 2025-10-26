@@ -77,7 +77,7 @@ def input_new_intent(alias: str, ws: Workspace) -> Intent:
         else:
             ingesting_trackers = False
 
-    local_plan = ws.plans.local_plan(date)
+    local_plan = ws.plans.get_local_plan_or_create(date)
 
     new_intent = Intent(
         alias=alias,

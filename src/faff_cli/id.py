@@ -15,7 +15,7 @@ def list_ids(ctx: typer.Context):
     Show the available ids.
     """
     ws: Workspace = ctx.obj
-    ids = ws.identities.get()
+    ids = ws.identities.list_identities()
     typer.echo(f"Found {len(ids)} ID(s) configured:")
     for id in ids.keys():
         typer.echo(f"- {id}")

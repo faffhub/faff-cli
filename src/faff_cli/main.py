@@ -5,6 +5,7 @@ from faff_cli import log, id, source, plan, compiler, start, timesheet
 from faff_cli.utils import edit_file
 from faff_cli.file_utils import FileSystemUtils
 
+import faff_core
 from faff_core import Workspace
 
 from pathlib import Path
@@ -65,10 +66,18 @@ def compile(ctx: typer.Context, date: str = typer.Argument(None)):
     cli: faff compile
     Compile the timesheet for a given date, defaulting to today.
     """
+    from faff_cli.utils import resolve_natural_date
+
     ws = ctx.obj
-    plugins = ws.compilers()
-    for plugin in plugins.values():
-        ws.timesheets.write_timesheet(plugin, ws.today())
+    resolved_date = resolve_natural_date(ws.today(), date)
+
+    log = ws.logs.get_log_or_create(resolved_date)
+    audiences = ws.timesheets.audiences()
+
+    for audience in audiences:
+        compiled_timesheet = audience.compile_time_sheet(log)
+        ws.timesheets.write_timesheet(compiled_timesheet)
+        typer.echo(f"Compiled timesheet for {resolved_date} using {audience.id}.")
 
 @cli.command()
 def rust(ctx: typer.Context):
@@ -95,8 +104,9 @@ def status(ctx: typer.Context):
     """
     ws: Workspace = ctx.obj
     typer.echo(f"Status for faff repo root at: {FileSystemUtils.get_faff_root()}")
+    typer.echo(f"faff-core library version: {faff_core.version()}")
 
-    log = ws.logs.get_log(ws.today())
+    log = ws.logs.get_log_or_create(ws.today())
     typer.echo(f"Total recorded time for today: {humanize.precisedelta(log.total_recorded_time(),minimum_unit='minutes')}")
 
     active_session = log.active_session()
