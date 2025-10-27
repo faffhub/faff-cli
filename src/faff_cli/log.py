@@ -7,7 +7,7 @@ from faff_cli import query
 from faff_core import Workspace
 from faff_core.models import Intent
 
-from faff_cli.private_log_formatter import PrivateLogFormatter
+# Removed: PrivateLogFormatter (now using Rust formatter via log.to_log_file())
 from faff_cli.utils import edit_file
 from faff_cli.file_utils import FileSystemUtils
 
@@ -37,7 +37,7 @@ def show(ctx: typer.Context, date: str = typer.Argument(None)):
     resolved_date = resolve_natural_date(ws.today(), date)
 
     log = ws.logs.get_log_or_create(resolved_date)
-    typer.echo(PrivateLogFormatter.format_log(log, ws.plans.get_trackers(log.date)))
+    typer.echo(log.to_log_file(ws.plans.get_trackers(log.date)))
 
 @app.command(name="list") # To avoid conflict with list type
 def log_list(ctx: typer.Context):
