@@ -65,33 +65,20 @@ def compile(ctx: typer.Context, date: str = typer.Argument(None)):
     cli: faff compile
     Compile the timesheet for a given date, defaulting to today.
     """
-    ws = ctx.obj
-    resolved_date = ws.parse_natural_date(date)
+    try:
+        ws = ctx.obj
+        resolved_date = ws.parse_natural_date(date)
 
-    log = ws.logs.get_log_or_create(resolved_date)
-    audiences = ws.timesheets.audiences()
+        log = ws.logs.get_log_or_create(resolved_date)
+        audiences = ws.timesheets.audiences()
 
-    for audience in audiences:
-        compiled_timesheet = audience.compile_time_sheet(log)
-        ws.timesheets.write_timesheet(compiled_timesheet)
-        typer.echo(f"Compiled timesheet for {resolved_date} using {audience.id}.")
-
-@cli.command()
-def rust(ctx: typer.Context):
-
-    ws: Workspace = ctx.obj
-
-    import faff_core
-    print(faff_core.hello_world())
-
-    from faff_core.models import Toy
-
-    t = Toy("Hello from Rust via an object!")
-    # print(t.do_a_datetime(ws.now()))
-    import datetime
-    import zoneinfo
-    print(repr(t.add_days(datetime.datetime.now(zoneinfo.ZoneInfo("Europe/London")), 5)))
-
+        for audience in audiences:
+            compiled_timesheet = audience.compile_time_sheet(log)
+            ws.timesheets.write_timesheet(compiled_timesheet)
+            typer.echo(f"Compiled timesheet for {resolved_date} using {audience.id}.")
+    except Exception as e:
+        typer.echo(f"Error compiling timesheet: {e}", err=True)
+        raise typer.Exit(1)
 
 @cli.command()
 def status(ctx: typer.Context):
@@ -99,28 +86,36 @@ def status(ctx: typer.Context):
     cli: faff status
     Show the status of the faff repository.
     """
-    ws: Workspace = ctx.obj
-    typer.echo(f"Status for faff repo root at: {ws.root_dir()}")
-    typer.echo(f"faff-core library version: {faff_core.version()}")
+    try:
+        ws: Workspace = ctx.obj
+        typer.echo(f"Status for faff repo root at: {ws.root_dir()}")
+        typer.echo(f"faff-core library version: {faff_core.version()}")
 
-    log = ws.logs.get_log_or_create(ws.today())
-    typer.echo(f"Total recorded time for today: {humanize.precisedelta(log.total_recorded_time(),minimum_unit='minutes')}")
+        log = ws.logs.get_log_or_create(ws.today())
+        typer.echo(f"Total recorded time for today: {humanize.precisedelta(log.total_recorded_time(),minimum_unit='minutes')}")
 
-    active_session = log.active_session()
-    if active_session:
-        typer.echo(f"Currently working on {active_session.intent.alias}.")
-        duration = ws.now() - active_session.start
-        if active_session.note:
-            typer.echo(f"Working on {active_session.intent.alias} (\"{active_session.note}\") for {humanize.precisedelta(duration)}")
+        active_session = log.active_session()
+        if active_session:
+            typer.echo(f"Currently working on {active_session.intent.alias}.")
+            duration = ws.now() - active_session.start
+            if active_session.note:
+                typer.echo(f"Working on {active_session.intent.alias} (\"{active_session.note}\") for {humanize.precisedelta(duration)}")
+            else:
+                typer.echo(f"Working on {active_session.intent.alias} for {humanize.precisedelta(duration)}")
         else:
-            typer.echo(f"Working on {active_session.intent.alias} for {humanize.precisedelta(duration)}")
-    else:
-        typer.echo("Not currently working on anything.")
+            typer.echo("Not currently working on anything.")
+    except Exception as e:
+        typer.echo(f"Error getting status: {e}", err=True)
+        raise typer.Exit(1)
 
 @cli.command()
 def stop(ctx: typer.Context):
     """
     Stop the current timeline entry.
     """
-    ws: Workspace = ctx.obj
-    typer.echo(ws.logs.stop_current_session())
+    try:
+        ws: Workspace = ctx.obj
+        typer.echo(ws.logs.stop_current_session())
+    except Exception as e:
+        typer.echo(f"Error stopping session: {e}", err=True)
+        raise typer.Exit(1)

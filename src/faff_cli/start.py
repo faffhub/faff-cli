@@ -95,31 +95,33 @@ def input_new_intent(alias: str, ws: Workspace) -> Intent:
 
 @app.callback(invoke_without_command=True)
 def start(ctx: typer.Context):
-    ctx.obj = Workspace()
+    try:
+        ws: Workspace = ctx.obj
+        date = ws.today()
 
-    ws: Workspace = ctx.obj
-    date = ws.today()
+        existing_intents = ws.plans.get_intents(date)
 
-    existing_intents = ws.plans.get_intents(date)
+        chosen_intent = fuzzy_select(
+            prompt="What are you doing?",
+            choices=intents_to_choices(existing_intents),
+            escapable=False,
+            slugify_new=False,
+            )
 
-    chosen_intent = fuzzy_select(
-        prompt="What are you doing?",
-        choices=intents_to_choices(existing_intents),
-        escapable=False,
-        slugify_new=False,
-        )
+        # If the intent is new, we'll want to prompt for details.
+        if not chosen_intent:
+            typer.echo("aborting")
+            return
+        if chosen_intent.is_new:
+            intent = input_new_intent(chosen_intent.value, ws)
+        elif not chosen_intent.is_new:
+            intent = chosen_intent.value
 
-    # If the intent is new, we'll want to prompt for details.
-    if not chosen_intent:
-        typer.echo("aborting")
-        return
-    if chosen_intent.is_new:
-        intent = input_new_intent(chosen_intent.value, ws)
-    elif not chosen_intent.is_new:
-        intent = chosen_intent.value
-    
-    note = input("? Note (optional): ")
-    typer.echo(ws.logs.start_intent_now(intent, note if note else None))
+        note = input("? Note (optional): ")
+        typer.echo(ws.logs.start_intent_now(intent, note if note else None))
+    except Exception as e:
+        typer.echo(f"Error starting session: {e}", err=True)
+        raise typer.Exit(1)
 
 def intents_to_choices(intents):
     choices = []

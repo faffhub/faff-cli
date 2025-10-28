@@ -31,11 +31,15 @@ def show(ctx: typer.Context, date: str = typer.Argument(None)):
     cli: faff log
     Show the log for today.
     """
-    ws = ctx.obj
-    resolved_date = ws.parse_natural_date(date)
+    try:
+        ws = ctx.obj
+        resolved_date = ws.parse_natural_date(date)
 
-    log = ws.logs.get_log_or_create(resolved_date)
-    typer.echo(log.to_log_file(ws.plans.get_trackers(log.date)))
+        log = ws.logs.get_log_or_create(resolved_date)
+        typer.echo(log.to_log_file(ws.plans.get_trackers(log.date)))
+    except Exception as e:
+        typer.echo(f"Error showing log: {e}", err=True)
+        raise typer.Exit(1)
 
 @app.command(name="list") # To avoid conflict with list type
 def log_list(ctx: typer.Context):
@@ -96,26 +100,30 @@ def edit(ctx: typer.Context,
     cli: faff log edit
     Edit the log for the specified date, defaulting to today, in your default editor.
     """
-    ws = ctx.obj
+    try:
+        ws = ctx.obj
 
-    resolved_date = ws.parse_natural_date(date)
+        resolved_date = ws.parse_natural_date(date)
 
-    # Process the log to ensure it's correctly formatted for reading
-    if not skip_validation:
-        log = ws.logs.get_log_or_create(resolved_date)
-        trackers = ws.plans.get_trackers(resolved_date)
-        ws.logs.write_log(log, trackers)
-
-    if edit_file(Path(ws.logs.log_file_path(resolved_date))):
-        typer.echo("Log file updated.")
-
-        # Process the edited file again after editing
+        # Process the log to ensure it's correctly formatted for reading
         if not skip_validation:
             log = ws.logs.get_log_or_create(resolved_date)
             trackers = ws.plans.get_trackers(resolved_date)
             ws.logs.write_log(log, trackers)
-    else:
-        typer.echo("No changes detected.")
+
+        if edit_file(Path(ws.logs.log_file_path(resolved_date))):
+            typer.echo("Log file updated.")
+
+            # Process the edited file again after editing
+            if not skip_validation:
+                log = ws.logs.get_log_or_create(resolved_date)
+                trackers = ws.plans.get_trackers(resolved_date)
+                ws.logs.write_log(log, trackers)
+        else:
+            typer.echo("No changes detected.")
+    except Exception as e:
+        typer.echo(f"Error editing log: {e}", err=True)
+        raise typer.Exit(1)
 
 
 @app.command()

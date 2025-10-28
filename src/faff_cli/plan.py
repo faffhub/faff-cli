@@ -63,9 +63,12 @@ def pull(ctx: typer.Context, remote_id: str = typer.Argument(None)):
             raise typer.BadParameter(f"Unknown source: {remote_id}")
 
     for remote in remotes:
-        plan = remote.pull_plan(ws.today())
-        if plan:
-            ws.plans.write_plan(plan)
-            typer.echo(f"Pulled plans from {remote.name}")
-        else:
-            typer.echo(f"No plans found for {remote.name}")
+        try:
+            plan = remote.pull_plan(ws.today())
+            if plan:
+                ws.plans.write_plan(plan)
+                typer.echo(f"Pulled plans from {remote.name}")
+            else:
+                typer.echo(f"No plans found for {remote.name}")
+        except Exception as e:
+            typer.echo(f"Error pulling plan from {remote.name}: {e}", err=True)
