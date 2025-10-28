@@ -9,9 +9,9 @@ from faff_core.models import Intent
 
 # Removed: PrivateLogFormatter (now using Rust formatter via log.to_log_file())
 from faff_cli.utils import edit_file
-from faff_cli.file_utils import FileSystemUtils
 
 from faff_cli.utils import resolve_natural_date
+from pathlib import Path
 
 from typing import Dict
 import datetime
@@ -87,7 +87,7 @@ def edit(ctx: typer.Context,
         trackers = ws.plans.get_trackers(resolved_date)
         ws.logs.write_log(log, trackers)
 
-    if edit_file(FileSystemUtils.get_log_path(resolved_date)):
+    if edit_file(Path(ws.logs.log_file_path(resolved_date))):
         typer.echo("Log file updated.")
 
         # Process the edited file again after editing

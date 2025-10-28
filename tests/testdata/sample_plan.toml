@@ -2,12 +2,6 @@ source = "local"
 valid_from = "2025-03-20"
 valid_until = "2025-04-01"
 
-[[trackers]]
-id = "work:admin"
-name = "Admin"
-metadata = { project = "internal" }
-
-[[trackers]]
-id = "client:projectx"
-name = "Client Work"
-metadata = { client = "ProjectX Ltd" }
+[trackers]
+"work:admin" = "Admin"
+"client:projectx" = "Client Work"

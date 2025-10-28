@@ -3,10 +3,9 @@ import humanize
 
 from faff_cli import log, id, source, plan, compiler, start, timesheet
 from faff_cli.utils import edit_file
-from faff_cli.file_utils import FileSystemUtils
 
 import faff_core
-from faff_core import Workspace
+from faff_core import Workspace, FileSystemStorage
 
 from pathlib import Path
 
@@ -40,12 +39,11 @@ def init(ctx: typer.Context,
         exit(1)
 
     typer.echo("Initialising faff repository.")
-    FileSystemUtils.initialise_repo(target_dir, force)
-    faff_root = FileSystemUtils.find_faff_root(target_dir)
-    if faff_root:
-        typer.echo(f"Initialised faff repository at {faff_root}.")
-    else:
-        typer.echo("Failed to initialise faff repository. Please check your permissions and try again.")
+    try:
+        storage = FileSystemStorage.init_at(str(target_dir), force)
+        typer.echo(f"Initialised faff repository at {storage.root_dir()}.")
+    except Exception as e:
+        typer.echo(f"Failed to initialise faff repository: {e}")
         exit(1)
 
 @cli.command()
@@ -55,7 +53,8 @@ def config(ctx: typer.Context):
     Edit the faff configuration in your preferred editor.
     """
     ws = ctx.obj
-    if edit_file(FileSystemUtils.get_config_path()):
+    from pathlib import Path
+    if edit_file(Path(ws.config_path())):
         typer.echo("Configuration file was updated.")
     else:
         typer.echo("No changes detected.")
@@ -103,7 +102,7 @@ def status(ctx: typer.Context):
     Show the status of the faff repository.
     """
     ws: Workspace = ctx.obj
-    typer.echo(f"Status for faff repo root at: {FileSystemUtils.get_faff_root()}")
+    typer.echo(f"Status for faff repo root at: {ws.root_dir()}")
     typer.echo(f"faff-core library version: {faff_core.version()}")
 
     log = ws.logs.get_log_or_create(ws.today())
