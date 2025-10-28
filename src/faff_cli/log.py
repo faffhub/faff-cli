@@ -189,15 +189,14 @@ def refresh(ctx: typer.Context, date: str = typer.Argument(None)):
     cli: faff log refresh
     Reformat the log file.
     """
-    ws = ctx.obj
+    try:
+        ws = ctx.obj
+        resolved_date = ws.parse_natural_date(date)
 
-    # Sanitize date input
-    if date:
-        date = ws.parse_date(date)
-    else:
-        date = ws.today()
-
-    log = ws.logs.get_log_or_create(date)
-    trackers = ws.plans.get_trackers(date)
-    ws.logs.write_log(log, trackers)
-    typer.echo("Log refreshed.")
+        log = ws.logs.get_log_or_create(resolved_date)
+        trackers = ws.plans.get_trackers(resolved_date)
+        ws.logs.write_log(log, trackers)
+        typer.echo("Log refreshed.")
+    except Exception as e:
+        typer.echo(f"Error refreshing log: {e}", err=True)
+        raise typer.Exit(1)
