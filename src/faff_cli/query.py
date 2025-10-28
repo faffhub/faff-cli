@@ -1,13 +1,11 @@
 import typer
 
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
-from faff_core import Workspace
-from faff_core.models import Intent
+from faff_core import Workspace, Filter, query_sessions
 
 from faff_cli.utils import resolve_natural_date
 
-from typing import Dict
 import datetime
 
 from rich.table import Table
@@ -37,35 +35,23 @@ def format_duration(td: datetime.timedelta) -> str:
 def gather_data(ws: Workspace,
                 from_date: Optional[datetime.date],
                 to_date: Optional[datetime.date],
-                filters: List['Filter']) -> Dict[Tuple, datetime.timedelta]:
+                filters: List[Filter]) -> dict:
+    """
+    Query sessions using Rust query_sessions function.
 
-    # For each date in the range, get the log and filter entries
-    # Group by the filter key values, not by intent
-    matching_sessions: Dict[Tuple, datetime.timedelta] = {}
-    for log in ws.logs.list():
-        if from_date and log.date < from_date:
-            continue
-        if to_date and log.date > to_date:
-            continue
+    Returns a dict where keys are tuples of filter values and values are timedeltas.
+    """
+    # Get all logs
+    logs = ws.logs.list()
 
-        for session in log.timeline:
-            # If all filters match add to matches
-            if all(filter.matches(session) for filter in filters):
-                # Create a key from the filter values
-                key_values = []
-                for filter in filters:
-                    if filter.key == 'note':
-                        key_values.append(session.note or "")
-                    else:
-                        key_values.append(getattr(session.intent, filter.key) or "")
+    # Call Rust query_sessions - it returns dict with tuple keys and i64 values (seconds)
+    results = query_sessions(logs, filters, from_date, to_date)
 
-                key = tuple(key_values)
-                if key not in matching_sessions:
-                    matching_sessions[key] = session.duration
-                else:
-                    matching_sessions[key] += session.duration
-
-    return matching_sessions
+    # Convert seconds back to timedelta for Python
+    return {
+        key: datetime.timedelta(seconds=duration_seconds)
+        for key, duration_seconds in results.items()
+    }
 
 @app.callback()
 def query(
@@ -129,7 +115,7 @@ def query(
     resolved_from_date = resolve_natural_date(ws.today(), from_date) if from_date else None
     resolved_to_date = resolve_natural_date(ws.today(), to_date) if to_date else None
 
-    filters = [Filter.from_string(f) for f in filter_strings] if filter_strings else []
+    filters = [Filter.parse(f) for f in filter_strings] if filter_strings else []
 
     summed_rows = gather_data(ws, resolved_from_date, resolved_to_date, filters)
 
@@ -137,7 +123,7 @@ def query(
     console = Console()
     table = Table()
     for filter in filters:
-        table.add_column(filter.key.capitalize())
+        table.add_column(filter.field().capitalize())
     table.add_column("Duration", justify="right")
 
     summed_rows = dict(sorted(summed_rows.items(), key=lambda item: item[1], reverse=True))
@@ -150,48 +136,3 @@ def query(
     table.add_row("TOTAL", *["" for _ in range(len(filters) - 1)], format_duration(total_duration))
 
     console.print(table)
-
-
-class Filter:
-    def __init__(self, key: str, operator: str, value: str):
-        if operator not in ['=', '~', '!=']:
-            raise ValueError(f"Invalid operator: {operator}")
-        if key not in ['alias', 'role', 'objective', 'action', 'subject', 'note']:
-            raise ValueError(f"Invalid key: {key}")
-        self.key = key
-        self.operator = operator
-        self.value = value
-
-    @classmethod
-    def from_string(cls, filter_str: str) -> 'Filter':
-        if '=' in filter_str:
-            key, value = filter_str.split('=', 1)
-            return cls(key, '=', value)
-        elif '~' in filter_str:
-            key, value = filter_str.split('~', 1)
-            return cls(key, '~', value)
-        elif '!=' in filter_str:
-            key, value = filter_str.split('!=', 1)
-            return cls(key, '!=', value)
-        else:
-            raise ValueError(f"Invalid filter format: {filter_str}")
-
-    def matches(self, session) -> bool:
-        # Try session fields first (e.g., note), then intent fields
-        if self.key == 'note':
-            value = session.note or ""
-        else:
-            # For intent fields
-            value = getattr(session.intent, self.key, None)
-
-        if value is None:
-            return False
-
-        if self.operator == '=':
-            return value == self.value
-        elif self.operator == '~':
-            return self.value.lower() in value.lower()
-        elif self.operator == '!=':
-            return value != self.value
-        else:
-            return False
