@@ -65,10 +65,8 @@ def compile(ctx: typer.Context, date: str = typer.Argument(None)):
     cli: faff compile
     Compile the timesheet for a given date, defaulting to today.
     """
-    from faff_cli.utils import resolve_natural_date
-
     ws = ctx.obj
-    resolved_date = resolve_natural_date(ws.today(), date)
+    resolved_date = ws.parse_natural_date(date)
 
     log = ws.logs.get_log_or_create(resolved_date)
     audiences = ws.timesheets.audiences()

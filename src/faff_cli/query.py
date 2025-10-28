@@ -4,8 +4,6 @@ from typing import List, Optional
 
 from faff_core import Workspace, Filter, query_sessions
 
-from faff_cli.utils import resolve_natural_date
-
 import datetime
 
 from rich.table import Table
@@ -112,8 +110,8 @@ def query(
     if until:
         to_date = until
 
-    resolved_from_date = resolve_natural_date(ws.today(), from_date) if from_date else None
-    resolved_to_date = resolve_natural_date(ws.today(), to_date) if to_date else None
+    resolved_from_date = ws.parse_natural_date(from_date) if from_date else None
+    resolved_to_date = ws.parse_natural_date(to_date) if to_date else None
 
     filters = [Filter.parse(f) for f in filter_strings] if filter_strings else []
 

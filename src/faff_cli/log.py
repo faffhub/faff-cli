@@ -9,8 +9,6 @@ from faff_core.models import Intent
 
 # Removed: PrivateLogFormatter (now using Rust formatter via log.to_log_file())
 from faff_cli.utils import edit_file
-
-from faff_cli.utils import resolve_natural_date
 from pathlib import Path
 
 from typing import Dict
@@ -34,7 +32,7 @@ def show(ctx: typer.Context, date: str = typer.Argument(None)):
     Show the log for today.
     """
     ws = ctx.obj
-    resolved_date = resolve_natural_date(ws.today(), date)
+    resolved_date = ws.parse_natural_date(date)
 
     log = ws.logs.get_log_or_create(resolved_date)
     typer.echo(log.to_log_file(ws.plans.get_trackers(log.date)))
@@ -53,21 +51,42 @@ def log_list(ctx: typer.Context):
         )
 
 @app.command()
-def rm(ctx: typer.Context, date: str):
+def rm(ctx: typer.Context,
+       date: str = typer.Argument(None),
+       yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt")):
     """
     cli: faff log rm
-    Remove the log for today.
+    Remove the log for the specified date, defaulting to today.
     """
-    # ws = ctx.obj
+    ws: Workspace = ctx.obj
+    resolved_date = ws.parse_natural_date(date)
 
-    # resolved_date = resolve_natural_date(ws.today(), date)
+    # Check if log exists
+    if not ws.logs.log_exists(resolved_date):
+        typer.echo(f"No log found for {resolved_date}.")
+        raise typer.Exit(1)
 
-    # TODO: Implement the remove functionality
+    # Get the log to check if it's empty
+    log = ws.logs.get_log(resolved_date)
 
-    #if ws.logs.rm(resolved_date):
-    #    typer.echo(f"Log for {resolved_date} removed.")
-    #else:
-    #    typer.echo(f"No log found for {resolved_date}.")
+    # Prompt for confirmation if log has content and --yes not specified
+    if log and len(log.timeline) > 0 and not yes:
+        session_count = len(log.timeline)
+        total_time = humanize.precisedelta(log.total_recorded_time(), minimum_unit='minutes')
+
+        typer.echo(f"Log for {resolved_date} contains {session_count} session(s) with {total_time} recorded.")
+        confirm = typer.confirm("Are you sure you want to delete this log?")
+        if not confirm:
+            typer.echo("Deletion cancelled.")
+            raise typer.Exit(0)
+
+    # Delete the log
+    try:
+        ws.logs.delete_log(resolved_date)
+        typer.echo(f"Log for {resolved_date} removed.")
+    except Exception as e:
+        typer.echo(f"Failed to delete log: {e}")
+        raise typer.Exit(1)
 
 @app.command()
 def edit(ctx: typer.Context,
@@ -79,7 +98,7 @@ def edit(ctx: typer.Context,
     """
     ws = ctx.obj
 
-    resolved_date = resolve_natural_date(ws.today(), date)
+    resolved_date = ws.parse_natural_date(date)
 
     # Process the log to ensure it's correctly formatted for reading
     if not skip_validation:
@@ -106,7 +125,7 @@ def summary(ctx: typer.Context, date: str = typer.Argument(None)):
     Show a summary of the log for today.
     """
     ws: Workspace = ctx.obj
-    resolved_date: datetime.date = resolve_natural_date(ws.today(), date)
+    resolved_date: datetime.date = ws.parse_natural_date(date)
 
     log = ws.logs.get_log_or_create(resolved_date)
 

@@ -1,6 +1,5 @@
 import typer
 
-from faff_cli.utils import resolve_natural_date
 from faff_core import Workspace
 
 app = typer.Typer(help="View, edit, and interact with downloaded plans.")
@@ -17,7 +16,7 @@ def list_plans(ctx: typer.Context, date: str = typer.Argument(None)):
     Show the planned activities for a given day, defaulting to today
     """
     ws: Workspace = ctx.obj
-    resolved_date = resolve_natural_date(ws.today(), date)
+    resolved_date = ws.parse_natural_date(date)
 
     plans = ws.plans.get_plans(resolved_date).values()
     typer.echo(f"Found {len(plans)} plan(s) active on {resolved_date}:")
@@ -43,7 +42,7 @@ def show(ctx: typer.Context,
     Show the planned activities for a given day, defaulting to today
     """
     ws: Workspace = ctx.obj
-    resolved_date = resolve_natural_date(ws.today(), date)
+    resolved_date = ws.parse_natural_date(date)
 
     plans = ws.plans.get_plans(resolved_date).values()
     for plan in plans:

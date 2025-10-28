@@ -1,6 +1,5 @@
 import typer
 
-from faff_cli.utils import resolve_natural_date
 from faff_core import Workspace
 
 
@@ -24,7 +23,7 @@ def compile(ctx: typer.Context, date: str = typer.Argument(None)):
     Compile the timesheet for a given date, defaulting to today.
     """
     ws: Workspace = ctx.obj
-    resolved_date = resolve_natural_date(ws.today(), date)
+    resolved_date = ws.parse_natural_date(date)
     
     log = ws.logs.get_log_or_create(resolved_date)
 
@@ -65,7 +64,7 @@ def show(ctx: typer.Context, audience_id: str, date: str = typer.Argument(None),
         help="Pretty-print the output instead of canonical JSON (without whitespace)",
     )):
     ws: Workspace = ctx.obj
-    resolved_date = resolve_natural_date(ws.today(), date)
+    resolved_date = ws.parse_natural_date(date)
 
     timesheet = ws.timesheets.get_timesheet(audience_id, resolved_date)
     import json
@@ -82,7 +81,7 @@ def submit(ctx: typer.Context, audience_id: str, date: str = typer.Argument(None
     Push the timesheet for a given date, defaulting to today.
     """
     ws: Workspace = ctx.obj
-    resolved_date = resolve_natural_date(ws.today(), date)
+    resolved_date = ws.parse_natural_date(date)
 
     timesheet = ws.timesheets.get_timesheet(audience_id, resolved_date)
     if timesheet:
