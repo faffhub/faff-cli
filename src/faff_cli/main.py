@@ -54,7 +54,7 @@ def config(ctx: typer.Context):
     """
     ws = ctx.obj
     from pathlib import Path
-    if edit_file(Path(ws.config_path())):
+    if edit_file(Path(ws.storage().config_file())):
         typer.echo("Configuration file was updated.")
     else:
         typer.echo("No changes detected.")
@@ -88,7 +88,7 @@ def status(ctx: typer.Context):
     """
     try:
         ws: Workspace = ctx.obj
-        typer.echo(f"Status for faff repo root at: {ws.root_dir()}")
+        typer.echo(f"Status for faff repo root at: {ws.storage().root_dir()}")
         typer.echo(f"faff-core library version: {faff_core.version()}")
 
         log = ws.logs.get_log_or_create(ws.today())
