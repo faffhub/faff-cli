@@ -2,11 +2,14 @@ import typer
 import toml
 import tempfile
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
+
+from rich.table import Table
+from rich.console import Console
 
 from faff_cli.utils import edit_file
 
-from faff_core import Workspace
+from faff_core import Workspace, Filter
 from faff_core.models import Intent
 
 app = typer.Typer(help="Manage intents (edit, derive, etc.)")
@@ -63,6 +66,284 @@ def edit_intent_in_editor(intent: Intent) -> Optional[Intent]:
     finally:
         # Clean up temp file
         temp_path.unlink(missing_ok=True)
+
+
+def matches_filter(intent_info: dict, filter_obj: Filter) -> bool:
+    """Check if an intent matches the given filter."""
+    field = filter_obj.field()
+    value = intent_info.get(field, "")
+    filter_value = filter_obj.value()
+    operator = filter_obj.operator()
+
+    # Handle different filter types
+    if operator == "=":
+        return value == filter_value
+    elif operator == "~":
+        return filter_value.lower() in (value or "").lower()
+    elif operator == "!=":
+        return value != filter_value
+
+    return True
+
+
+@app.command(name="list")
+def ls(
+    ctx: typer.Context,
+    filter_strings: List[str] = typer.Argument(
+        None,
+        help="Filters in the form key=value, key~value, or key!=value (e.g. alias~sync, role=element:head-of-customer-success).",
+    ),
+):
+    """
+    List all intents from all plans in a table.
+
+    Supports filtering using the same syntax as faff query:
+    - key=value (exact match)
+    - key~value (contains match)
+    - key!=value (not equal)
+
+    Supported fields: intent_id, alias, role, objective, action, subject, trackers, source
+    """
+    try:
+        ws: Workspace = ctx.obj
+
+        # Parse filters
+        filters = [Filter.parse(f) for f in filter_strings] if filter_strings else []
+
+        # Get all plan files
+        plan_dir = Path(ws.storage().plan_dir())
+        plan_files = sorted(plan_dir.glob("*.toml"))
+
+        # Collect all intents with their plan metadata
+        all_intents = []
+        for plan_file in plan_files:
+            try:
+                plan_data = toml.load(plan_file)
+                source = plan_data.get("source", "unknown")
+                valid_from = plan_data.get("valid_from", "unknown")
+                valid_until = plan_data.get("valid_until", "")
+
+                for intent_dict in plan_data.get("intents", []):
+                    intent_info = {
+                        "intent_id": intent_dict.get("intent_id", ""),
+                        "alias": intent_dict.get("alias", ""),
+                        "role": intent_dict.get("role", ""),
+                        "objective": intent_dict.get("objective", ""),
+                        "action": intent_dict.get("action", ""),
+                        "subject": intent_dict.get("subject", ""),
+                        "trackers": ", ".join(intent_dict.get("trackers", [])),
+                        "source": source,
+                        "valid_from": valid_from,
+                        "valid_until": valid_until,
+                    }
+                    all_intents.append(intent_info)
+            except Exception:
+                continue
+
+        # Apply filters
+        filtered_intents = []
+        for intent_info in all_intents:
+            # Check all filters (AND logic)
+            if all(matches_filter(intent_info, f) for f in filters):
+                filtered_intents.append(intent_info)
+
+        # Display in table
+        console = Console()
+        table = Table(show_header=True, header_style="bold")
+        table.add_column("Intent ID", style="cyan")
+        table.add_column("Alias", style="green")
+        table.add_column("Role")
+        table.add_column("Objective")
+        table.add_column("Action")
+        table.add_column("Subject")
+        table.add_column("Trackers")
+        table.add_column("Valid From")
+        table.add_column("Valid Until")
+
+        for intent_info in filtered_intents:
+            table.add_row(
+                intent_info["intent_id"],
+                intent_info["alias"],
+                intent_info["role"],
+                intent_info["objective"],
+                intent_info["action"],
+                intent_info["subject"],
+                intent_info["trackers"],
+                intent_info["valid_from"],
+                intent_info["valid_until"] or "∞",
+            )
+
+        console.print(table)
+        console.print(f"\n[bold]Total:[/bold] {len(filtered_intents)} intent(s)")
+
+    except Exception as e:
+        typer.echo(f"Error listing intents: {e}", err=True)
+        import traceback
+        traceback.print_exc()
+        raise typer.Exit(1)
+
+
+@app.command()
+def replace(ctx: typer.Context, old_intent_id: str, new_intent_id: str):
+    """
+    Replace all uses of one intent with another.
+
+    This is useful for:
+    - Fixing orphaned intents
+    - Consolidating duplicate intents
+    - Migrating from deprecated intents
+
+    After replacement, all sessions using old_intent_id will be updated to
+    use new_intent_id. The old intent remains in plans but won't be used
+    by any sessions.
+    """
+    try:
+        ws: Workspace = ctx.obj
+
+        # Verify both intents exist
+        old_result = ws.plans.find_intent_by_id(old_intent_id)
+        new_result = ws.plans.find_intent_by_id(new_intent_id)
+
+        # Old intent might be orphaned (not in any plan), so check logs if not found in plans
+        if not old_result:
+            typer.echo(f"Warning: Old intent '{old_intent_id}' not found in any plan.")
+            typer.echo("It may be orphaned. Checking logs...")
+
+            # Check if it's used in logs
+            logs_with_old = ws.logs.find_logs_with_intent(old_intent_id)
+            if not logs_with_old:
+                typer.echo(f"Error: Old intent '{old_intent_id}' not found in plans or logs.", err=True)
+                raise typer.Exit(1)
+
+            typer.echo(f"✓ Found {len(logs_with_old)} log file(s) using orphaned old intent.")
+            old_alias = "Unknown (orphaned)"
+        else:
+            old_source, old_intent, _ = old_result
+            old_alias = old_intent.alias
+            typer.echo(f"✓ Found old intent: {old_alias} (from '{old_source}' plan)")
+
+        if not new_result:
+            typer.echo(f"Error: New intent '{new_intent_id}' not found.", err=True)
+            raise typer.Exit(1)
+
+        new_source, new_intent, _ = new_result
+        typer.echo(f"✓ Found new intent: {new_intent.alias} (from '{new_source}' plan)")
+
+        # Find all sessions using the old intent
+        typer.echo(f"\nSearching for sessions using old intent...")
+        logs_with_old = ws.logs.find_logs_with_intent(old_intent_id)
+
+        if not logs_with_old:
+            typer.echo(f"\n✓ No sessions found using old intent '{old_intent_id}'.")
+            typer.echo("Nothing to replace.")
+            return
+
+        total_sessions = sum(count for _, count in logs_with_old)
+        typer.echo(f"\n{'='*60}")
+        typer.echo("REPLACEMENT SUMMARY")
+        typer.echo('='*60)
+        typer.echo(f"Old intent: {old_alias} ({old_intent_id})")
+        typer.echo(f"New intent: {new_intent.alias} ({new_intent_id})")
+        typer.echo(f"\nWill update {total_sessions} session(s) across {len(logs_with_old)} log file(s):")
+        for date, count in logs_with_old[:5]:  # Show first 5
+            typer.echo(f"  - {date}: {count} session(s)")
+        if len(logs_with_old) > 5:
+            typer.echo(f"  ... and {len(logs_with_old) - 5} more")
+        typer.echo('='*60 + "\n")
+
+        if not typer.confirm("Proceed with replacement?", default=False):
+            typer.echo("Cancelled.")
+            return
+
+        # Perform the replacement
+        typer.echo("\nReplacing sessions...")
+        trackers = ws.plans.get_trackers(ws.today())
+        total_updated = ws.logs.update_intent_in_logs(
+            old_intent_id,
+            new_intent,
+            trackers
+        )
+
+        typer.echo(f"\n✓ Successfully replaced {total_updated} session(s).")
+        typer.echo(f"\nAll sessions now use: {new_intent.alias} ({new_intent_id})")
+
+        if old_result:
+            typer.echo(f"\nNote: Old intent remains in '{old_source}' plan but is no longer used.")
+            typer.echo("You may want to remove it manually if it's no longer needed.")
+
+    except Exception as e:
+        typer.echo(f"Error replacing intents: {e}", err=True)
+        raise typer.Exit(1)
+
+
+@app.command()
+def derive(ctx: typer.Context, intent_id: str):
+    """
+    Create a new intent derived from an existing one.
+
+    The derived intent will be added to today's local plan and will be
+    available from today onwards. The original intent remains unchanged.
+    """
+    try:
+        ws: Workspace = ctx.obj
+
+        # Find the source intent using Rust
+        result = ws.plans.find_intent_by_id(intent_id)
+        if not result:
+            typer.echo(f"Error: Intent with ID '{intent_id}' not found.", err=True)
+            raise typer.Exit(1)
+
+        source, original_intent, plan_file_path = result
+
+        typer.echo(f"Found intent in '{source}' plan ({Path(plan_file_path).name})")
+        typer.echo(f"Creating a derived intent based on: {original_intent.alias}")
+
+        # Edit the intent in the editor
+        derived_intent = edit_intent_in_editor(original_intent)
+
+        if not derived_intent:
+            typer.echo("\nNo changes made. Cancelled.")
+            return
+
+        # Clear the intent_id so a new one will be generated
+        derived_intent.intent_id = ""
+
+        # Show changes summary
+        typer.echo("\n" + "="*60)
+        typer.echo("DERIVED INTENT SUMMARY")
+        typer.echo("="*60)
+        typer.echo(f"Source intent: {original_intent.alias} ({original_intent.intent_id})")
+        typer.echo(f"New alias: {derived_intent.alias}")
+        if derived_intent.role != original_intent.role:
+            typer.echo(f"Role: {original_intent.role} → {derived_intent.role}")
+        if derived_intent.objective != original_intent.objective:
+            typer.echo(f"Objective: {original_intent.objective} → {derived_intent.objective}")
+        if derived_intent.action != original_intent.action:
+            typer.echo(f"Action: {original_intent.action} → {derived_intent.action}")
+        if derived_intent.subject != original_intent.subject:
+            typer.echo(f"Subject: {original_intent.subject} → {derived_intent.subject}")
+        if derived_intent.trackers != original_intent.trackers:
+            typer.echo(f"Trackers: {original_intent.trackers} → {derived_intent.trackers}")
+        typer.echo("="*60 + "\n")
+
+        if not typer.confirm("Create this derived intent?"):
+            typer.echo("Cancelled.")
+            return
+
+        # Add to today's local plan
+        today = ws.today()
+        local_plan = ws.plans.get_local_plan_or_create(today)
+        new_plan = local_plan.add_intent(derived_intent)
+        ws.plans.write_plan(new_plan)
+
+        typer.echo(f"\n✓ Created derived intent with ID: {new_plan.intents[-1].intent_id}")
+        typer.echo(f"✓ Added to local plan for {today}")
+        typer.echo("\nThe derived intent is now available for use from today onwards.")
+        typer.echo("The original intent remains unchanged in its plan.")
+
+    except Exception as e:
+        typer.echo(f"Error deriving intent: {e}", err=True)
+        raise typer.Exit(1)
 
 
 @app.command()
