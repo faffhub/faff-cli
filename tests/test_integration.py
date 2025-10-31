@@ -14,7 +14,7 @@ runner = CliRunner()
 class TestBasicWorkflow:
     """Test basic time tracking workflow."""
 
-    def test_init_status_workflow(self, tmp_path):
+    def test_init_status_workflow(self, tmp_path, monkeypatch):
         """
         Test: init a repo -> check status
         """
@@ -24,7 +24,8 @@ class TestBasicWorkflow:
         assert (tmp_path / ".faff").exists()
 
         # Check status in new repo
-        result = runner.invoke(cli, ["status"], env={"FAFF_ROOT": str(tmp_path / ".faff")})
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(cli, ["status"])
         assert result.exit_code == 0
         assert "Not currently working on anything" in result.stdout
 
@@ -32,7 +33,7 @@ class TestBasicWorkflow:
         """
         Test: view log -> shows empty -> refresh log
         """
-        monkeypatch.setenv("FAFF_ROOT", str(temp_faff_dir))
+        monkeypatch.chdir(temp_faff_dir.parent)
 
         # View today's log
         result = runner.invoke(cli, ["log", "show"])
@@ -55,7 +56,7 @@ class TestPlanWorkflow:
         """
         Test: list plans -> show plan details
         """
-        monkeypatch.setenv("FAFF_ROOT", str(temp_faff_dir))
+        monkeypatch.chdir(temp_faff_dir.parent)
 
         # List plans for date when plan is valid (valid_from = 2025-03-20)
         result = runner.invoke(cli, ["plan", "list", "2025-03-20"])
@@ -70,7 +71,7 @@ class TestPlanWorkflow:
         """
         Test: list remotes -> pull from remote
         """
-        monkeypatch.setenv("FAFF_ROOT", str(temp_faff_dir))
+        monkeypatch.chdir(temp_faff_dir.parent)
 
         # List remotes
         result = runner.invoke(cli, ["plan", "remotes"])
@@ -89,7 +90,7 @@ class TestLogWorkflow:
         """
         Test: show log -> view summary
         """
-        monkeypatch.setenv("FAFF_ROOT", str(temp_faff_dir))
+        monkeypatch.chdir(temp_faff_dir.parent)
 
         # Show log
         result = runner.invoke(cli, ["log", "show"])
@@ -105,7 +106,7 @@ class TestLogWorkflow:
         """
         Test: list all logs -> show specific date
         """
-        monkeypatch.setenv("FAFF_ROOT", str(temp_faff_dir))
+        monkeypatch.chdir(temp_faff_dir.parent)
 
         # List all logs
         result = runner.invoke(cli, ["log", "list"])
@@ -119,7 +120,7 @@ class TestLogWorkflow:
         """
         Test: create logs for multiple dates
         """
-        monkeypatch.setenv("FAFF_ROOT", str(temp_faff_dir))
+        monkeypatch.chdir(temp_faff_dir.parent)
 
         dates = ["today", "yesterday"]  # Use natural dates that work
 
@@ -139,7 +140,7 @@ class TestErrorHandling:
 
     def test_invalid_date_format(self, temp_faff_dir, monkeypatch):
         """Should handle invalid date formats gracefully."""
-        monkeypatch.setenv("FAFF_ROOT", str(temp_faff_dir))
+        monkeypatch.chdir(temp_faff_dir.parent)
 
         # Try invalid date - behavior depends on implementation
         result = runner.invoke(cli, ["log", "show", "not-a-date"])
@@ -150,7 +151,7 @@ class TestErrorHandling:
     def test_missing_faff_directory(self, tmp_path, monkeypatch):
         """Should handle missing .faff directory."""
         # Point to directory without .faff
-        monkeypatch.setenv("FAFF_ROOT", str(tmp_path / ".faff"))
+        monkeypatch.chdir(tmp_path)
 
         result = runner.invoke(cli, ["status"])
 
@@ -175,7 +176,7 @@ class TestDataPersistence:
         """
         Test: refresh log -> verify file exists on disk
         """
-        monkeypatch.setenv("FAFF_ROOT", str(temp_faff_dir))
+        monkeypatch.chdir(temp_faff_dir.parent)
 
         # workspace_with_log already has a log entry in memory
         # Refresh command will write it to disk
@@ -193,7 +194,7 @@ class TestDataPersistence:
         """
         Test: verify plan file content persists
         """
-        monkeypatch.setenv("FAFF_ROOT", str(temp_faff_dir))
+        monkeypatch.chdir(temp_faff_dir.parent)
 
         # Show plan
         result = runner.invoke(cli, ["plan", "show", "2025-03-20"])

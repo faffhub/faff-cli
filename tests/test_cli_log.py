@@ -15,7 +15,7 @@ class TestLogShowCommand:
 
     def test_log_show_empty_log(self, temp_faff_dir, monkeypatch):
         """Should show empty log for today."""
-        monkeypatch.setenv("FAFF_ROOT", str(temp_faff_dir))
+        monkeypatch.chdir(temp_faff_dir.parent)
 
         result = runner.invoke(cli, ["log", "show"])
 
@@ -25,7 +25,7 @@ class TestLogShowCommand:
 
     def test_log_show_with_date_argument(self, temp_faff_dir, monkeypatch):
         """Should accept date argument."""
-        monkeypatch.setenv("FAFF_ROOT", str(temp_faff_dir))
+        monkeypatch.chdir(temp_faff_dir.parent)
 
         result = runner.invoke(cli, ["log", "show", "2025-01-15"])
 
@@ -33,7 +33,7 @@ class TestLogShowCommand:
 
     def test_log_show_with_entries(self, workspace_with_log, temp_faff_dir, monkeypatch):
         """Should display log entries."""
-        monkeypatch.setenv("FAFF_ROOT", str(temp_faff_dir))
+        monkeypatch.chdir(temp_faff_dir.parent)
 
         result = runner.invoke(cli, ["log", "show"])
 
@@ -47,7 +47,7 @@ class TestLogListCommand:
 
     def test_log_list_empty(self, temp_faff_dir, monkeypatch):
         """Should handle empty log directory."""
-        monkeypatch.setenv("FAFF_ROOT", str(temp_faff_dir))
+        monkeypatch.chdir(temp_faff_dir.parent)
 
         result = runner.invoke(cli, ["log", "list"])
 
@@ -56,7 +56,7 @@ class TestLogListCommand:
 
     def test_log_list_with_entries(self, workspace_with_log, temp_faff_dir, monkeypatch):
         """Should list existing logs."""
-        monkeypatch.setenv("FAFF_ROOT", str(temp_faff_dir))
+        monkeypatch.chdir(temp_faff_dir.parent)
 
         result = runner.invoke(cli, ["log", "list"])
 
@@ -72,7 +72,7 @@ class TestLogRefreshCommand:
 
     def test_log_refresh_today(self, temp_faff_dir, monkeypatch):
         """Should refresh log for today."""
-        monkeypatch.setenv("FAFF_ROOT", str(temp_faff_dir))
+        monkeypatch.chdir(temp_faff_dir.parent)
 
         result = runner.invoke(cli, ["log", "refresh"])
 
@@ -81,7 +81,7 @@ class TestLogRefreshCommand:
 
     def test_log_refresh_specific_date(self, temp_faff_dir, monkeypatch):
         """Should refresh log for specific date."""
-        monkeypatch.setenv("FAFF_ROOT", str(temp_faff_dir))
+        monkeypatch.chdir(temp_faff_dir.parent)
 
         # Use natural date to avoid parse_date bug
         result = runner.invoke(cli, ["log", "refresh", "yesterday"])
@@ -97,7 +97,7 @@ class TestLogSummaryCommand:
 
     def test_log_summary_empty(self, temp_faff_dir, monkeypatch):
         """Should show summary for empty log."""
-        monkeypatch.setenv("FAFF_ROOT", str(temp_faff_dir))
+        monkeypatch.chdir(temp_faff_dir.parent)
 
         result = runner.invoke(cli, ["log", "summary"])
 
@@ -107,7 +107,7 @@ class TestLogSummaryCommand:
 
     def test_log_summary_with_data(self, workspace_with_log, temp_faff_dir, monkeypatch):
         """Should show summary with intent and tracker totals."""
-        monkeypatch.setenv("FAFF_ROOT", str(temp_faff_dir))
+        monkeypatch.chdir(temp_faff_dir.parent)
 
         result = runner.invoke(cli, ["log", "summary"])
 
@@ -117,7 +117,7 @@ class TestLogSummaryCommand:
 
     def test_log_summary_specific_date(self, temp_faff_dir, monkeypatch):
         """Should accept date argument."""
-        monkeypatch.setenv("FAFF_ROOT", str(temp_faff_dir))
+        monkeypatch.chdir(temp_faff_dir.parent)
 
         result = runner.invoke(cli, ["log", "summary", "2025-01-15"])
 
@@ -130,7 +130,7 @@ class TestStopCommand:
 
     def test_stop_with_no_active_session(self, temp_faff_dir, monkeypatch):
         """Should handle stopping when nothing is active."""
-        monkeypatch.setenv("FAFF_ROOT", str(temp_faff_dir))
+        monkeypatch.chdir(temp_faff_dir.parent)
 
         result = runner.invoke(cli, ["stop"])
 

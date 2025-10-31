@@ -14,7 +14,7 @@ class TestStatusCommand:
 
     def test_status_shows_version(self, temp_faff_dir, monkeypatch):
         """Should display faff-core version."""
-        monkeypatch.setenv("FAFF_ROOT", str(temp_faff_dir))
+        monkeypatch.chdir(temp_faff_dir.parent)
 
         result = runner.invoke(cli, ["status"])
 
@@ -23,7 +23,7 @@ class TestStatusCommand:
 
     def test_status_shows_repo_location(self, temp_faff_dir, monkeypatch):
         """Should display repository location."""
-        monkeypatch.setenv("FAFF_ROOT", str(temp_faff_dir))
+        monkeypatch.chdir(temp_faff_dir.parent)
 
         result = runner.invoke(cli, ["status"])
 
@@ -32,7 +32,7 @@ class TestStatusCommand:
 
     def test_status_shows_no_active_session(self, temp_faff_dir, monkeypatch):
         """Should indicate when not working on anything."""
-        monkeypatch.setenv("FAFF_ROOT", str(temp_faff_dir))
+        monkeypatch.chdir(temp_faff_dir.parent)
 
         result = runner.invoke(cli, ["status"])
 
@@ -41,7 +41,7 @@ class TestStatusCommand:
 
     def test_status_shows_total_time(self, temp_faff_dir, monkeypatch):
         """Should display total recorded time for today."""
-        monkeypatch.setenv("FAFF_ROOT", str(temp_faff_dir))
+        monkeypatch.chdir(temp_faff_dir.parent)
 
         result = runner.invoke(cli, ["status"])
 
@@ -90,7 +90,7 @@ class TestConfigCommand:
 
     def test_config_command_exists(self, temp_faff_dir, monkeypatch):
         """Should have a config command."""
-        monkeypatch.setenv("FAFF_ROOT", str(temp_faff_dir))
+        monkeypatch.chdir(temp_faff_dir.parent)
 
         # This will try to open an editor, which we can't test easily
         # Just verify the command exists and responds
