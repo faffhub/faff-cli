@@ -29,14 +29,8 @@ def temp_faff_dir():
     (faff_dir / "identities").mkdir()
 
     # Create a minimal config.toml
-    config_content = """
-[workspace]
-timezone = "UTC"
-
-[[sources]]
-id = "local"
-type = "local"
-"""
+    config_content = """timezone = "UTC"
+""".strip()
     (faff_dir / "config.toml").write_text(config_content)
 
     yield faff_dir
@@ -50,8 +44,8 @@ def workspace(temp_faff_dir, monkeypatch):
     """
     Create a Workspace instance pointed at the temp directory.
     """
-    # Monkeypatch the environment to use temp directory
-    monkeypatch.setenv("FAFF_ROOT", str(temp_faff_dir))
+    # Change to the temp directory so Workspace can find .faff
+    monkeypatch.chdir(temp_faff_dir.parent)
 
     # Create workspace
     ws = Workspace()
