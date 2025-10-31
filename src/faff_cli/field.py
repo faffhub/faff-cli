@@ -44,9 +44,9 @@ def list(
 
         # Collect all unique values with detailed counts
         values: Set[str] = set()
-        intent_count = defaultdict(int)
-        session_count = defaultdict(int)
-        log_count = defaultdict(set)  # Set of log dates per value
+        intent_count: dict[str, int] = defaultdict(int)
+        session_count: dict[str, int] = defaultdict(int)
+        log_count: dict[str, set[str]] = defaultdict(set)  # Set of log dates per value
 
         plural_field = PLURAL_MAP[field]
 

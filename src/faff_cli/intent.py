@@ -226,8 +226,8 @@ def ls(
 
         # Count sessions per intent ID across all logs
         from collections import defaultdict
-        session_count = defaultdict(int)
-        log_count = defaultdict(set)
+        session_count: dict[str, int] = defaultdict(int)
+        log_count: dict[str, set[str]] = defaultdict(set)
 
         log_dir = Path(ws.storage().log_dir())
         log_files = sorted(log_dir.glob("*.toml"))
