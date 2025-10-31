@@ -23,7 +23,11 @@ cli.add_typer(field.app, name="field")
 
 @cli.callback()
 def main(ctx: typer.Context):
-    ctx.obj = Workspace()
+    # Don't create workspace for init command - it doesn't need one
+    if ctx.invoked_subcommand == "init":
+        ctx.obj = None
+    else:
+        ctx.obj = Workspace()
 
 @cli.command()
 def init(ctx: typer.Context,
@@ -33,8 +37,7 @@ def init(ctx: typer.Context,
     cli: faff init
     Initialise faff obj.
     """
-    ws: Workspace = ctx.obj
-
+    # init doesn't need a workspace - ctx.obj will be None
     target_dir = Path(target_dir_str)
     if not target_dir.exists():
         typer.echo(f"Target directory {target_dir} does not exist.")
