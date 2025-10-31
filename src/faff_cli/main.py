@@ -1,7 +1,7 @@
 import typer
 import humanize
 
-from faff_cli import log, id, source, plan, compiler, start, timesheet, intent
+from faff_cli import log, id, source, plan, compiler, start, timesheet, intent, field
 from faff_cli.utils import edit_file
 
 import faff_core
@@ -19,6 +19,7 @@ cli.add_typer(plan.app, name="plan")
 cli.add_typer(start.app, name="start")
 cli.add_typer(timesheet.app, name="timesheet")
 cli.add_typer(intent.app, name="intent")
+cli.add_typer(field.app, name="field")
 
 @cli.callback()
 def main(ctx: typer.Context):
@@ -97,7 +98,6 @@ def status(ctx: typer.Context):
 
         active_session = log.active_session()
         if active_session:
-            typer.echo(f"Currently working on {active_session.intent.alias}.")
             duration = ws.now() - active_session.start
             if active_session.note:
                 typer.echo(f"Working on {active_session.intent.alias} (\"{active_session.note}\") for {humanize.precisedelta(duration)}")

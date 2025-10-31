@@ -6,6 +6,7 @@ from typing import Optional, List
 
 from rich.table import Table
 from rich.console import Console
+from rich.markup import escape
 
 from faff_cli.utils import edit_file
 
@@ -68,6 +69,84 @@ def edit_intent_in_editor(intent: Intent) -> Optional[Intent]:
         temp_path.unlink(missing_ok=True)
 
 
+def format_field(value: str) -> str:
+    """Format a field with source prefix dimmed and content bold."""
+    if ":" in value:
+        prefix, content = value.split(":", 1)
+        return f"[dim]{prefix}:[/dim][bold]{content}[/bold]"
+    return f"[bold]{value}[/bold]"
+
+
+def display_intents_compact(intents: List[dict], console: Console) -> None:
+    """Display intents in compact multi-line format."""
+    for intent_info in intents:
+        # First line: ID alias (usage) valid dates
+        valid_str = str(intent_info["valid_from"])
+        if intent_info["valid_until"]:
+            valid_str += f" → {intent_info['valid_until']}"
+        else:
+            valid_str += " →"
+
+        # Escape intent_id and alias to prevent Rich from styling them
+        intent_id_escaped = escape(intent_info['intent_id'])
+        alias_escaped = escape(intent_info['alias'])
+
+        # Get usage stats
+        sessions = intent_info.get("session_count", 0)
+        logs = intent_info.get("log_count", 0)
+        usage_str = f"({sessions} session{'s' if sessions != 1 else ''}, {logs} log{'s' if logs != 1 else ''})"
+
+        console.print(
+            f"[cyan]{intent_id_escaped}[/cyan]  "
+            f"[yellow]{alias_escaped}[/yellow]  "
+            f"[dim]{usage_str}[/dim]  "
+            f"[dim]{valid_str}[/dim]"
+        )
+
+        # Second line: As <role> I do <action> to achieve <objective> for <subject>
+        role_fmt = format_field(intent_info['role'])
+        action_fmt = format_field(intent_info['action'])
+        objective_fmt = format_field(intent_info['objective'])
+        subject_fmt = format_field(intent_info['subject'])
+
+        console.print(
+            f"  As {role_fmt} "
+            f"I do {action_fmt} "
+            f"to achieve {objective_fmt} "
+            f"for {subject_fmt}"
+        )
+        console.print()  # Blank line between intents
+
+
+def display_intents_table(intents: List[dict], console: Console) -> None:
+    """Display intents in table format."""
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("Intent ID", style="cyan")
+    table.add_column("Alias", style="green")
+    table.add_column("Role")
+    table.add_column("Objective")
+    table.add_column("Action")
+    table.add_column("Subject")
+    table.add_column("Trackers")
+    table.add_column("Valid From")
+    table.add_column("Valid Until")
+
+    for intent_info in intents:
+        table.add_row(
+            intent_info["intent_id"],
+            intent_info["alias"],
+            intent_info["role"],
+            intent_info["objective"],
+            intent_info["action"],
+            intent_info["subject"],
+            intent_info["trackers"],
+            str(intent_info["valid_from"]),
+            intent_info["valid_until"] or "∞",
+        )
+
+    console.print(table)
+
+
 def matches_filter(intent_info: dict, filter_obj: Filter) -> bool:
     """Check if an intent matches the given filter."""
     field = filter_obj.field()
@@ -93,9 +172,14 @@ def ls(
         None,
         help="Filters in the form key=value, key~value, or key!=value (e.g. alias~sync, role=element:head-of-customer-success).",
     ),
+    table: bool = typer.Option(
+        False,
+        "--table",
+        help="Display in table format instead of compact format",
+    ),
 ):
     """
-    List all intents from all plans in a table.
+    List all intents from all plans.
 
     Supports filtering using the same syntax as faff query:
     - key=value (exact match)
@@ -140,6 +224,33 @@ def ls(
             except Exception:
                 continue
 
+        # Count sessions per intent ID across all logs
+        from collections import defaultdict
+        session_count = defaultdict(int)
+        log_count = defaultdict(set)
+
+        log_dir = Path(ws.storage().log_dir())
+        log_files = sorted(log_dir.glob("*.toml"))
+
+        for log_file in log_files:
+            try:
+                log_data = toml.load(log_file)
+                log_date = log_file.stem
+
+                for session in log_data.get("timeline", []):
+                    intent_id = session.get("intent_id")
+                    if intent_id:
+                        session_count[intent_id] += 1
+                        log_count[intent_id].add(log_date)
+            except Exception:
+                continue
+
+        # Add usage stats to each intent
+        for intent_info in all_intents:
+            intent_id = intent_info["intent_id"]
+            intent_info["session_count"] = session_count.get(intent_id, 0)
+            intent_info["log_count"] = len(log_count.get(intent_id, set()))
+
         # Apply filters
         filtered_intents = []
         for intent_info in all_intents:
@@ -147,34 +258,17 @@ def ls(
             if all(matches_filter(intent_info, f) for f in filters):
                 filtered_intents.append(intent_info)
 
-        # Display in table
-        console = Console()
-        table = Table(show_header=True, header_style="bold")
-        table.add_column("Intent ID", style="cyan")
-        table.add_column("Alias", style="green")
-        table.add_column("Role")
-        table.add_column("Objective")
-        table.add_column("Action")
-        table.add_column("Subject")
-        table.add_column("Trackers")
-        table.add_column("Valid From")
-        table.add_column("Valid Until")
+        # Sort by session count (most used first)
+        filtered_intents.sort(key=lambda x: x.get("session_count", 0), reverse=True)
 
-        for intent_info in filtered_intents:
-            table.add_row(
-                intent_info["intent_id"],
-                intent_info["alias"],
-                intent_info["role"],
-                intent_info["objective"],
-                intent_info["action"],
-                intent_info["subject"],
-                intent_info["trackers"],
-                intent_info["valid_from"],
-                intent_info["valid_until"] or "∞",
-            )
+        # Display results (disable auto-highlighting to prevent unwanted styling)
+        console = Console(highlight=False)
+        if table:
+            display_intents_table(filtered_intents, console)
+        else:
+            display_intents_compact(filtered_intents, console)
 
-        console.print(table)
-        console.print(f"\n[bold]Total:[/bold] {len(filtered_intents)} intent(s)")
+        console.print(f"[bold]Total:[/bold] {len(filtered_intents)} intent(s)")
 
     except Exception as e:
         typer.echo(f"Error listing intents: {e}", err=True)
