@@ -28,9 +28,8 @@ class TestIntent:
         assert intent.action == "writing"
         assert intent.subject == "tests"
         assert intent.trackers == ["project:test"]
-        # intent_id should be auto-generated
-        assert intent.intent_id is not None
-        assert intent.intent_id.startswith("i-")
+        # intent_id is empty until added to a plan
+        assert intent.intent_id == ""
 
     def test_create_intent_minimal(self):
         """Should create intent with minimal fields."""
