@@ -16,7 +16,7 @@ dependencies = [
     "pfzy",
     "dateparser",
     "humanize",
-    "tomli; python_version<'3.11'"
+    "toml",
 ]
 
 [project.optional-dependencies]
