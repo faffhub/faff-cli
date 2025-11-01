@@ -1,7 +1,7 @@
 import typer
 import humanize
 
-from faff_cli import log, id, source, plan, compiler, start, timesheet, intent, field
+from faff_cli import log, id, plan, compiler, start, timesheet, intent, field, remote
 from faff_cli.utils import edit_file
 
 import faff_core
@@ -12,7 +12,6 @@ from pathlib import Path
 cli = typer.Typer()
 
 cli.add_typer(log.app, name="log")
-cli.add_typer(source.app, name="source")
 cli.add_typer(compiler.app, name="compiler")
 cli.add_typer(id.app, name="id")
 cli.add_typer(plan.app, name="plan")
@@ -20,6 +19,7 @@ cli.add_typer(start.app, name="start")
 cli.add_typer(timesheet.app, name="timesheet")
 cli.add_typer(intent.app, name="intent")
 cli.add_typer(field.app, name="field")
+cli.add_typer(remote.app, name="remote")
 
 @cli.callback()
 def main(ctx: typer.Context):

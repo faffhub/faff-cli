@@ -86,12 +86,14 @@ def input_new_intent(alias: str, ws: Workspace) -> Intent:
         action=action.value if action else None,
         subject=subject.value if subject else None,
         trackers=trackers
-    ) 
+    )
 
     new_plan = local_plan.add_intent(new_intent)
     ws.plans.write_plan(new_plan)
 
-    return new_intent   
+    # Get the intent back from the plan - it now has a generated ID
+    intent_with_id = [i for i in new_plan.intents if i.alias == alias][-1]
+    return intent_with_id   
 
 @app.callback(invoke_without_command=True)
 def start(ctx: typer.Context):
