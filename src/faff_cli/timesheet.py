@@ -30,16 +30,41 @@ def compile(ctx: typer.Context, date: str = typer.Argument(None)):
     compilers = ws.timesheets.audiences()
     for compiler in compilers:
         compiled_timesheet = compiler.compile_time_sheet(log)
-        key = ws.identities.get_identity("tom@element.io")
-        if key:
-            # FIXME: Rust Timesheet.sign() takes bytes, but we should pass a proper SigningKey object
-            # This will be cleaned up when identity manager is ported to Rust
-            signed_sheet = compiled_timesheet.sign("tom@element.io", bytes(key))
-            ws.timesheets.write_timesheet(signed_sheet)
-            typer.echo(f"Compiled and signed timesheet for {resolved_date} using {compiler.id}.")
+
+        # Sign the timesheet if signing_ids are configured (even if empty)
+        signing_ids = compiler.config.get('signing_ids', [])
+        is_empty = len(compiled_timesheet.timeline) == 0
+
+        if signing_ids:
+            signed = False
+            for signing_id in signing_ids:
+                key = ws.identities.get_identity(signing_id)
+                if key:
+                    # FIXME: Rust Timesheet.sign() takes bytes, but we should pass a proper SigningKey object
+                    # This will be cleaned up when identity manager is ported to Rust
+                    compiled_timesheet = compiled_timesheet.sign(signing_id, bytes(key))
+                    signed = True
+                else:
+                    typer.echo(f"Warning: No identity key found for {signing_id}", err=True)
+
+            if signed:
+                ws.timesheets.write_timesheet(compiled_timesheet)
+                if is_empty:
+                    typer.echo(f"Compiled and signed empty timesheet for {resolved_date} using {compiler.id} (no relevant sessions).")
+                else:
+                    typer.echo(f"Compiled and signed timesheet for {resolved_date} using {compiler.id}.")
+            else:
+                ws.timesheets.write_timesheet(compiled_timesheet)
+                if is_empty:
+                    typer.echo(f"Warning: Compiled unsigned empty timesheet for {resolved_date} using {compiler.id} (no valid signing keys)", err=True)
+                else:
+                    typer.echo(f"Warning: Compiled unsigned timesheet for {resolved_date} using {compiler.id} (no valid signing keys)", err=True)
         else:
-            typer.echo("No identity key found for signing timesheet. Skipping signing.")
             ws.timesheets.write_timesheet(compiled_timesheet)
+            if is_empty:
+                typer.echo(f"Warning: Compiled unsigned empty timesheet for {resolved_date} using {compiler.id} (no signing_ids configured)", err=True)
+            else:
+                typer.echo(f"Warning: Compiled unsigned timesheet for {resolved_date} using {compiler.id} (no signing_ids configured)", err=True)
 
 @app.command(name="list") # To avoid conflict with list type
 def list_timesheets(ctx: typer.Context):
@@ -50,8 +75,6 @@ def list_timesheets(ctx: typer.Context):
         line = f"- {timesheet.meta.audience_id} {timesheet.date} (generated at {timesheet.compiled}"
         if timesheet.meta.submitted_at:
             line += f"; submitted at {timesheet.meta.submitted_at}"
-        if timesheet.meta.submitted_by:
-            line += f" by {timesheet.meta.submitted_by}"
         else:
             line += "; not submitted"
         line += ")"

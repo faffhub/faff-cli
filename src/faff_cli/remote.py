@@ -54,6 +54,78 @@ def list_remotes(ctx: typer.Context):
 
 
 @app.command()
+def add(
+    ctx: typer.Context,
+    remote_id: str = typer.Argument(..., help="ID for the remote"),
+    plugin: str = typer.Argument(..., help="Plugin name (e.g., 'my-hours', 'jira')"),
+):
+    """
+    Create a new remote configuration.
+    """
+    try:
+        ws: Workspace = ctx.obj
+        console = Console()
+
+        remotes_dir = Path(ws.storage().remotes_dir())
+        remote_file = remotes_dir / f"{remote_id}.toml"
+
+        if remote_file.exists():
+            console.print(f"[red]Remote '{remote_id}' already exists[/red]")
+            console.print(f"File: {remote_file}")
+            console.print("\nUse 'faff remote edit' to modify it.")
+            raise typer.Exit(1)
+
+        # Create minimal remote config
+        config = f"""id = "{remote_id}"
+plugin = "{plugin}"
+
+[connection]
+# Add your connection details here
+
+[vocabulary]
+# Add static ROAST vocabulary items here (optional)
+"""
+
+        remote_file.write_text(config)
+        console.print(f"[green]Created remote '{remote_id}'[/green]")
+        console.print(f"File: {remote_file}")
+        console.print(f"\nRun: [cyan]faff remote edit {remote_id}[/cyan] to configure")
+
+    except Exception as e:
+        typer.echo(f"Error adding remote: {e}", err=True)
+        raise typer.Exit(1)
+
+
+@app.command()
+def edit(ctx: typer.Context, remote_id: str = typer.Argument(..., help="Remote ID to edit")):
+    """
+    Edit a remote configuration in your preferred editor.
+    """
+    try:
+        ws: Workspace = ctx.obj
+        console = Console()
+
+        remotes_dir = Path(ws.storage().remotes_dir())
+        remote_file = remotes_dir / f"{remote_id}.toml"
+
+        if not remote_file.exists():
+            console.print(f"[red]Remote '{remote_id}' not found[/red]")
+            console.print(f"\nRun: [cyan]faff remote add {remote_id} <plugin>[/cyan]")
+            raise typer.Exit(1)
+
+        from faff_cli.utils import edit_file
+
+        if edit_file(remote_file):
+            console.print(f"[green]Remote '{remote_id}' updated[/green]")
+        else:
+            console.print("No changes detected.")
+
+    except Exception as e:
+        typer.echo(f"Error editing remote: {e}", err=True)
+        raise typer.Exit(1)
+
+
+@app.command()
 def show(ctx: typer.Context, remote_id: str = typer.Argument(..., help="Remote ID to show")):
     """
     Show detailed configuration for a remote.

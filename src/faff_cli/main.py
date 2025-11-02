@@ -65,37 +65,219 @@ def config(ctx: typer.Context):
         typer.echo("No changes detected.")
 
 @cli.command()
-def compile(ctx: typer.Context, date: str = typer.Argument(None)):
+def pull(ctx: typer.Context, remote: str = typer.Argument(None, help="Remote to pull from (omit to pull from all)")):
     """
-    cli: faff compile
-    Compile the timesheet for a given date, defaulting to today.
+    Pull plans from a remote (or all remotes).
+    """
+    try:
+        ws: Workspace = ctx.obj
+        remotes = ws.plans.remotes()
+
+        if remote:
+            remotes = [r for r in remotes if r.id == remote]
+            if len(remotes) == 0:
+                typer.echo(f"Unknown remote: {remote}", err=True)
+                raise typer.Exit(1)
+
+        for r in remotes:
+            try:
+                plan = r.pull_plan(ws.today())
+                if plan:
+                    ws.plans.write_plan(plan)
+                    typer.echo(f"Pulled plan from {r.id}")
+                else:
+                    typer.echo(f"No plans found for {r.id}")
+            except Exception as e:
+                typer.echo(f"Error pulling plan from {r.id}: {e}", err=True)
+    except Exception as e:
+        typer.echo(f"Error pulling plans: {e}", err=True)
+        raise typer.Exit(1)
+
+@cli.command()
+def compile(ctx: typer.Context,
+            date: str = typer.Argument(None, help="Specific date to compile (omit to compile all uncompiled logs)"),
+            audience: str = typer.Option(None, "--audience", "-a", help="Specific audience to compile for (omit for all)")):
+    """
+    Compile timesheets. By default, compiles all logs that don't have timesheets yet.
+    Specify a date to force recompile a specific date.
     """
     try:
         ws = ctx.obj
-        resolved_date = ws.parse_natural_date(date)
-
-        log = ws.logs.get_log_or_create(resolved_date)
         audiences = ws.timesheets.audiences()
 
-        for audience in audiences:
-            compiled_timesheet = audience.compile_time_sheet(log)
-            ws.timesheets.write_timesheet(compiled_timesheet)
-            typer.echo(f"Compiled timesheet for {resolved_date} using {audience.id}.")
+        if audience:
+            audiences = [a for a in audiences if a.id == audience]
+            if len(audiences) == 0:
+                typer.echo(f"Unknown audience: {audience}", err=True)
+                raise typer.Exit(1)
+
+        if date:
+            # Specific date provided - compile that date
+            resolved_date = ws.parse_natural_date(date)
+            log = ws.logs.get_log_or_create(resolved_date)
+
+            # FIXME: This check should be in faff-core, not faff-cli
+            # The compile_time_sheet method should refuse to compile logs with active sessions
+            # Check for unclosed session
+            if log.active_session():
+                typer.echo(f"Cannot compile {resolved_date}: log has an unclosed session. Run 'faff stop' first.", err=True)
+                raise typer.Exit(1)
+
+            for aud in audiences:
+                compiled_timesheet = aud.compile_time_sheet(log)
+                if compiled_timesheet:
+                    # Sign the timesheet if signing_ids are configured
+                    signing_ids = aud.config.get('signing_ids', [])
+                    if signing_ids:
+                        signed = False
+                        for signing_id in signing_ids:
+                            key = ws.identities.get_identity(signing_id)
+                            if key:
+                                compiled_timesheet = compiled_timesheet.sign(signing_id, bytes(key))
+                                signed = True
+                            else:
+                                typer.echo(f"Warning: No identity key found for {signing_id}", err=True)
+
+                        if signed:
+                            ws.timesheets.write_timesheet(compiled_timesheet)
+                            typer.echo(f"Compiled and signed timesheet for {resolved_date} using {aud.id}.")
+                        else:
+                            ws.timesheets.write_timesheet(compiled_timesheet)
+                            typer.echo(f"Warning: Compiled unsigned timesheet for {resolved_date} using {aud.id} (no valid signing keys)", err=True)
+                    else:
+                        ws.timesheets.write_timesheet(compiled_timesheet)
+                        typer.echo(f"Warning: Compiled unsigned timesheet for {resolved_date} using {aud.id} (no signing_ids configured)", err=True)
+                else:
+                    typer.echo(f"No timesheet for {resolved_date} from {aud.id} (no relevant sessions).")
+        else:
+            # No date provided - find all logs that need compiling
+            log_dates = ws.logs.list_log_dates()
+            existing_timesheets = ws.timesheets.list()
+
+            # Build a set of (audience_id, date) tuples for existing timesheets
+            existing = {(ts.meta.audience_id, ts.date) for ts in existing_timesheets}
+
+            compiled_count = 0
+            skipped_unclosed = []
+            for log_date in log_dates:
+                log = ws.logs.get_log(log_date)
+                if not log:
+                    continue
+
+                # FIXME: This check should be in faff-core, not faff-cli
+                # The compile_time_sheet method should refuse to compile logs with active sessions
+                # Check for unclosed session
+                if log.active_session():
+                    skipped_unclosed.append(log_date)
+                    continue
+
+                for aud in audiences:
+                    if (aud.id, log_date) not in existing:
+                        compiled_timesheet = aud.compile_time_sheet(log)
+                        # Sign the timesheet if signing_ids are configured (even if empty)
+                        is_empty = len(compiled_timesheet.timeline) == 0
+                        signing_ids = aud.config.get('signing_ids', [])
+
+                        if signing_ids:
+                            signed = False
+                            for signing_id in signing_ids:
+                                key = ws.identities.get_identity(signing_id)
+                                if key:
+                                    compiled_timesheet = compiled_timesheet.sign(signing_id, bytes(key))
+                                    signed = True
+                                else:
+                                    typer.echo(f"Warning: No identity key found for {signing_id}", err=True)
+
+                            if signed:
+                                ws.timesheets.write_timesheet(compiled_timesheet)
+                                if is_empty:
+                                    typer.echo(f"Compiled and signed empty timesheet for {log_date} using {aud.id} (no relevant sessions).")
+                                else:
+                                    typer.echo(f"Compiled and signed timesheet for {log_date} using {aud.id}.")
+                            else:
+                                ws.timesheets.write_timesheet(compiled_timesheet)
+                                if is_empty:
+                                    typer.echo(f"Warning: Compiled unsigned empty timesheet for {log_date} using {aud.id} (no valid signing keys)", err=True)
+                                else:
+                                    typer.echo(f"Warning: Compiled unsigned timesheet for {log_date} using {aud.id} (no valid signing keys)", err=True)
+                        else:
+                            ws.timesheets.write_timesheet(compiled_timesheet)
+                            if is_empty:
+                                typer.echo(f"Warning: Compiled unsigned empty timesheet for {log_date} using {aud.id} (no signing_ids configured)", err=True)
+                            else:
+                                typer.echo(f"Warning: Compiled unsigned timesheet for {log_date} using {aud.id} (no signing_ids configured)", err=True)
+
+                        compiled_count += 1
+
+            if skipped_unclosed:
+                typer.echo(f"\nSkipped {len(skipped_unclosed)} log(s) with unclosed sessions:", err=True)
+                for log_date in skipped_unclosed:
+                    typer.echo(f"  - {log_date} (run 'faff stop' to close the active session)", err=True)
+
+            if compiled_count == 0 and not skipped_unclosed:
+                typer.echo("All logs already have compiled timesheets.")
     except Exception as e:
         typer.echo(f"Error compiling timesheet: {e}", err=True)
         raise typer.Exit(1)
 
 @cli.command()
+def push(ctx: typer.Context,
+         date: str = typer.Argument(None, help="Specific date to push (omit to push all unsubmitted timesheets)"),
+         audience: str = typer.Option(None, "--audience", "-a", help="Specific audience to push to (omit for all)")):
+    """
+    Push timesheets. By default, pushes all compiled timesheets that haven't been submitted yet.
+    Specify a date to force push a specific date.
+    """
+    try:
+        ws: Workspace = ctx.obj
+
+        if date:
+            # Specific date provided - push that date
+            resolved_date = ws.parse_natural_date(date)
+            audiences = ws.timesheets.audiences()
+
+            if audience:
+                audiences = [a for a in audiences if a.id == audience]
+                if len(audiences) == 0:
+                    typer.echo(f"Unknown audience: {audience}", err=True)
+                    raise typer.Exit(1)
+
+            for aud in audiences:
+                timesheet = ws.timesheets.get_timesheet(aud.id, resolved_date)
+                if timesheet:
+                    ws.timesheets.submit(timesheet)
+                    typer.echo(f"Pushed timesheet for {resolved_date} to {aud.id}.")
+                else:
+                    typer.echo(f"No timesheet found for {aud.id} on {resolved_date}. Did you run 'faff compile' first?", err=True)
+        else:
+            # No date provided - push all unsubmitted timesheets
+            all_timesheets = ws.timesheets.list()
+            unsubmitted = [ts for ts in all_timesheets if ts.meta.submitted_at is None]
+
+            if audience:
+                unsubmitted = [ts for ts in unsubmitted if ts.meta.audience_id == audience]
+
+            if len(unsubmitted) == 0:
+                typer.echo("All timesheets have been submitted.")
+            else:
+                for timesheet in unsubmitted:
+                    ws.timesheets.submit(timesheet)
+                    typer.echo(f"Pushed timesheet for {timesheet.date} to {timesheet.meta.audience_id}.")
+    except Exception as e:
+        typer.echo(f"Error pushing timesheet: {e}", err=True)
+        raise typer.Exit(1)
+
+@cli.command()
 def status(ctx: typer.Context):
     """
-    cli: faff status
-    Show the status of the faff repository.
+    Show the status of the faff repository, including what needs compiling/pushing.
     """
     try:
         ws: Workspace = ctx.obj
         typer.echo(f"Status for faff repo root at: {ws.storage().root_dir()}")
-        typer.echo(f"faff-core library version: {faff_core.version()}")
+        typer.echo(f"faff-core library version: {faff_core.version()}\n")
 
+        # Today's status
         log = ws.logs.get_log_or_create(ws.today())
         typer.echo(f"Total recorded time for today: {humanize.precisedelta(log.total_recorded_time(),minimum_unit='minutes')}")
 
@@ -108,6 +290,71 @@ def status(ctx: typer.Context):
                 typer.echo(f"Working on {active_session.intent.alias} for {humanize.precisedelta(duration)}")
         else:
             typer.echo("Not currently working on anything.")
+
+        # Check what needs compiling
+        typer.echo("\n--- Logs needing compilation ---")
+        log_dates = ws.logs.list_log_dates()
+        existing_timesheets = ws.timesheets.list()
+        audiences = ws.timesheets.audiences()
+
+        # Build a set of (audience_id, date) tuples for existing timesheets
+        existing = {(ts.meta.audience_id, ts.date) for ts in existing_timesheets}
+
+        needs_compiling = []
+        has_unclosed = []
+        for log_date in log_dates:
+            log = ws.logs.get_log(log_date)
+            if not log:
+                continue
+
+            # Check if this log needs compiling for any audience
+            needs_compile_for_audiences = [aud.id for aud in audiences if (aud.id, log_date) not in existing]
+
+            if needs_compile_for_audiences:
+                total_hours = log.total_recorded_time().total_seconds() / 3600
+                if log.active_session():
+                    has_unclosed.append((log_date, total_hours, needs_compile_for_audiences))
+                else:
+                    needs_compiling.append((log_date, total_hours, needs_compile_for_audiences))
+
+        if has_unclosed:
+            typer.echo("⚠️  Logs with unclosed sessions (cannot compile):")
+            for log_date, hours, audience_ids in has_unclosed:
+                typer.echo(f"  {log_date}: {hours:.2f}h (for {', '.join(audience_ids)})")
+            typer.echo("  Run 'faff stop' to close the active session\n")
+
+        if needs_compiling:
+            typer.echo("Ready to compile:")
+            for log_date, hours, audience_ids in needs_compiling:
+                typer.echo(f"  {log_date}: {hours:.2f}h (for {', '.join(audience_ids)})")
+            total_to_compile = sum(hours for _, hours, _ in needs_compiling)
+            typer.echo(f"  Total: {len(needs_compiling)} log(s), {total_to_compile:.2f}h")
+        elif not has_unclosed:
+            typer.echo("All logs have compiled timesheets ✓")
+
+        # Check what needs pushing
+        typer.echo("\n--- Timesheets needing submission ---")
+        unsubmitted = [ts for ts in existing_timesheets if ts.meta.submitted_at is None]
+
+        if unsubmitted:
+            # Group by audience
+            by_audience = {}
+            for ts in unsubmitted:
+                if ts.meta.audience_id not in by_audience:
+                    by_audience[ts.meta.audience_id] = []
+                by_audience[ts.meta.audience_id].append(ts)
+
+            for audience_id, timesheets in by_audience.items():
+                typer.echo(f"For {audience_id}:")
+                total_hours = 0
+                for ts in sorted(timesheets, key=lambda t: t.date):
+                    hours = sum(s.duration.total_seconds() for s in ts.timeline) / 3600
+                    total_hours += hours
+                    typer.echo(f"  {ts.date}: {hours:.2f}h")
+                typer.echo(f"  Total: {len(timesheets)} timesheet(s), {total_hours:.2f}h")
+        else:
+            typer.echo("All timesheets have been submitted ✓")
+
     except Exception as e:
         typer.echo(f"Error getting status: {e}", err=True)
         raise typer.Exit(1)
