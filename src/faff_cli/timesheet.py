@@ -29,7 +29,7 @@ def compile(ctx: typer.Context, date: str = typer.Argument(None)):
 
     compilers = ws.timesheets.audiences()
     for compiler in compilers:
-        compiled_timesheet = compiler.compile_time_sheet(log)
+        compiled_timesheet = ws.timesheets.compile(log, compiler)
 
         # Sign the timesheet if signing_ids are configured (even if empty)
         signing_ids = compiler.config.get('signing_ids', [])

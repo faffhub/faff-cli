@@ -124,31 +124,28 @@ def compile(ctx: typer.Context,
                 raise typer.Exit(1)
 
             for aud in audiences:
-                compiled_timesheet = aud.compile_time_sheet(log)
-                if compiled_timesheet:
-                    # Sign the timesheet if signing_ids are configured
-                    signing_ids = aud.config.get('signing_ids', [])
-                    if signing_ids:
-                        signed = False
-                        for signing_id in signing_ids:
-                            key = ws.identities.get_identity(signing_id)
-                            if key:
-                                compiled_timesheet = compiled_timesheet.sign(signing_id, bytes(key))
-                                signed = True
-                            else:
-                                typer.echo(f"Warning: No identity key found for {signing_id}", err=True)
-
-                        if signed:
-                            ws.timesheets.write_timesheet(compiled_timesheet)
-                            typer.echo(f"Compiled and signed timesheet for {resolved_date} using {aud.id}.")
+                compiled_timesheet = ws.timesheets.compile(log, aud)
+                # Sign the timesheet if signing_ids are configured
+                signing_ids = aud.config.get('signing_ids', [])
+                if signing_ids:
+                    signed = False
+                    for signing_id in signing_ids:
+                        key = ws.identities.get_identity(signing_id)
+                        if key:
+                            compiled_timesheet = compiled_timesheet.sign(signing_id, bytes(key))
+                            signed = True
                         else:
-                            ws.timesheets.write_timesheet(compiled_timesheet)
-                            typer.echo(f"Warning: Compiled unsigned timesheet for {resolved_date} using {aud.id} (no valid signing keys)", err=True)
+                            typer.echo(f"Warning: No identity key found for {signing_id}", err=True)
+
+                    if signed:
+                        ws.timesheets.write_timesheet(compiled_timesheet)
+                        typer.echo(f"Compiled and signed timesheet for {resolved_date} using {aud.id}.")
                     else:
                         ws.timesheets.write_timesheet(compiled_timesheet)
-                        typer.echo(f"Warning: Compiled unsigned timesheet for {resolved_date} using {aud.id} (no signing_ids configured)", err=True)
+                        typer.echo(f"Warning: Compiled unsigned timesheet for {resolved_date} using {aud.id} (no valid signing keys)", err=True)
                 else:
-                    typer.echo(f"No timesheet for {resolved_date} from {aud.id} (no relevant sessions).")
+                    ws.timesheets.write_timesheet(compiled_timesheet)
+                    typer.echo(f"Warning: Compiled unsigned timesheet for {resolved_date} using {aud.id} (no signing_ids configured)", err=True)
         else:
             # No date provided - find all logs that need compiling
             log_dates = ws.logs.list_log_dates()
@@ -173,7 +170,7 @@ def compile(ctx: typer.Context,
 
                 for aud in audiences:
                     if (aud.id, log_date) not in existing:
-                        compiled_timesheet = aud.compile_time_sheet(log)
+                        compiled_timesheet = ws.timesheets.compile(log, aud)
                         # Sign the timesheet if signing_ids are configured (even if empty)
                         is_empty = len(compiled_timesheet.timeline) == 0
                         signing_ids = aud.config.get('signing_ids', [])
@@ -331,6 +328,58 @@ def status(ctx: typer.Context):
             typer.echo(f"  Total: {len(needs_compiling)} log(s), {total_to_compile:.2f}h")
         elif not has_unclosed:
             typer.echo("All logs have compiled timesheets ✓")
+
+        # Check for stale timesheets (log changed after compilation)
+        typer.echo("\n--- Stale timesheets (log changed) ---")
+        stale = []
+        for ts in existing_timesheets:
+            try:
+                # Get the current log and calculate its hash
+                raw_log = ws.logs.read_log_raw(ts.date)
+                from faff_core.models import Log
+                current_hash = Log.calculate_hash(raw_log)
+
+                # Compare with the hash stored in the timesheet
+                if ts.meta.log_hash and ts.meta.log_hash != current_hash:
+                    stale.append(ts)
+            except:
+                # Log might not exist anymore
+                pass
+
+        if stale:
+            # Group by audience
+            by_audience = {}
+            for ts in stale:
+                if ts.meta.audience_id not in by_audience:
+                    by_audience[ts.meta.audience_id] = []
+                by_audience[ts.meta.audience_id].append(ts)
+
+            for audience_id, timesheets in by_audience.items():
+                typer.echo(f"For {audience_id}:")
+                for ts in sorted(timesheets, key=lambda t: t.date):
+                    hours = sum(s.duration.total_seconds() for s in ts.timeline) / 3600
+                    typer.echo(f"  ⚠️  {ts.date}: {hours:.2f}h (recompile needed)")
+            typer.echo(f"  Total: {len(stale)} stale timesheet(s)")
+        else:
+            typer.echo("All timesheets are up-to-date ✓")
+
+        # Check for failed submissions
+        typer.echo("\n--- Failed submissions ---")
+        failed = [ts for ts in existing_timesheets if ts.meta.submission_status == "failed"]
+
+        if failed:
+            for ts in sorted(failed, key=lambda t: t.date):
+                hours = sum(s.duration.total_seconds() for s in ts.timeline) / 3600
+                typer.echo(f"❌ {ts.meta.audience_id} - {ts.date}: {hours:.2f}h")
+                if ts.meta.submission_error:
+                    # Truncate long error messages
+                    error = ts.meta.submission_error
+                    if len(error) > 100:
+                        error = error[:97] + "..."
+                    typer.echo(f"   Error: {error}")
+            typer.echo(f"  Total: {len(failed)} failed submission(s)")
+        else:
+            typer.echo("No failed submissions ✓")
 
         # Check what needs pushing
         typer.echo("\n--- Timesheets needing submission ---")
