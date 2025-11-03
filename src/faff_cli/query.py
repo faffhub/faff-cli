@@ -40,7 +40,7 @@ def gather_data(ws: Workspace,
     Returns a dict where keys are tuples of filter values and values are timedeltas.
     """
     # Get all logs
-    logs = ws.logs.list()
+    logs = ws.logs.list_logs()
 
     # Call Rust query_sessions - it returns dict with tuple keys and i64 values (seconds)
     results = query_sessions(logs, filters, from_date, to_date)

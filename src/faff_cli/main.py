@@ -1,7 +1,7 @@
 import typer
 import humanize
 
-from faff_cli import log, id, plan, compiler, start, timesheet, intent, field, remote, plugin
+from faff_cli import log, id, plan, start, timesheet, intent, field, remote, plugin
 from faff_cli.utils import edit_file
 
 import faff_core
@@ -12,7 +12,6 @@ from pathlib import Path
 cli = typer.Typer()
 
 cli.add_typer(log.app, name="log")
-cli.add_typer(compiler.app, name="compiler")
 cli.add_typer(id.app, name="id")
 cli.add_typer(plan.app, name="plan")
 cli.add_typer(start.app, name="start")
@@ -150,7 +149,7 @@ def compile(ctx: typer.Context,
         else:
             # No date provided - find all logs that need compiling
             log_dates = ws.logs.list_log_dates()
-            existing_timesheets = ws.timesheets.list()
+            existing_timesheets = ws.timesheets.list_timesheets()
 
             # Build a set of (audience_id, date) tuples for existing timesheets
             existing = {(ts.meta.audience_id, ts.date) for ts in existing_timesheets}
@@ -249,7 +248,7 @@ def push(ctx: typer.Context,
                     typer.echo(f"No timesheet found for {aud.id} on {resolved_date}. Did you run 'faff compile' first?", err=True)
         else:
             # No date provided - push all unsubmitted timesheets
-            all_timesheets = ws.timesheets.list()
+            all_timesheets = ws.timesheets.list_timesheets()
             unsubmitted = [ts for ts in all_timesheets if ts.meta.submitted_at is None]
 
             if audience:
@@ -292,7 +291,7 @@ def status(ctx: typer.Context):
         # Check what needs compiling
         typer.echo("\n--- Logs needing compilation ---")
         log_dates = ws.logs.list_log_dates()
-        existing_timesheets = ws.timesheets.list()
+        existing_timesheets = ws.timesheets.list_timesheets()
         audiences = ws.timesheets.audiences()
 
         # Build a set of (audience_id, date) tuples for existing timesheets

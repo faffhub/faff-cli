@@ -46,7 +46,7 @@ def log_list(ctx: typer.Context):
     ws: Workspace = ctx.obj
 
     typer.echo("Private logs recorded for the following dates:")
-    for log in ws.logs.list():
+    for log in ws.logs.list_logs():
         # FIXME: It would be nicer if this included the start and end time of the day
         typer.echo(
             f"- {log.date} {log.date.strftime('%a').upper()} "
