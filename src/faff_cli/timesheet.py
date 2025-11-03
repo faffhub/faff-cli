@@ -31,34 +31,25 @@ def compile(ctx: typer.Context, date: str = typer.Argument(None)):
     for compiler in compilers:
         compiled_timesheet = ws.timesheets.compile(log, compiler)
 
-        # Sign the timesheet if signing_ids are configured (even if empty)
+        # Sign the timesheet if signing_ids are configured
         signing_ids = compiler.config.get('signing_ids', [])
         is_empty = len(compiled_timesheet.timeline) == 0
 
         if signing_ids:
-            signed = False
-            for signing_id in signing_ids:
-                key = ws.identities.get_identity(signing_id)
-                if key:
-                    # FIXME: Rust Timesheet.sign() takes bytes, but we should pass a proper SigningKey object
-                    # This will be cleaned up when identity manager is ported to Rust
-                    compiled_timesheet = compiled_timesheet.sign(signing_id, bytes(key))
-                    signed = True
-                else:
-                    typer.echo(f"Warning: No identity key found for {signing_id}", err=True)
-
-            if signed:
-                ws.timesheets.write_timesheet(compiled_timesheet)
+            try:
+                signed_timesheet = ws.timesheets.sign_timesheet(compiled_timesheet, signing_ids)
+                ws.timesheets.write_timesheet(signed_timesheet)
                 if is_empty:
                     typer.echo(f"Compiled and signed empty timesheet for {resolved_date} using {compiler.id} (no relevant sessions).")
                 else:
                     typer.echo(f"Compiled and signed timesheet for {resolved_date} using {compiler.id}.")
-            else:
+            except Exception as e:
+                # Signing failed - write unsigned and warn
                 ws.timesheets.write_timesheet(compiled_timesheet)
                 if is_empty:
-                    typer.echo(f"Warning: Compiled unsigned empty timesheet for {resolved_date} using {compiler.id} (no valid signing keys)", err=True)
+                    typer.echo(f"Warning: Compiled unsigned empty timesheet for {resolved_date} using {compiler.id} (signing failed: {e})", err=True)
                 else:
-                    typer.echo(f"Warning: Compiled unsigned timesheet for {resolved_date} using {compiler.id} (no valid signing keys)", err=True)
+                    typer.echo(f"Warning: Compiled unsigned timesheet for {resolved_date} using {compiler.id} (signing failed: {e})", err=True)
         else:
             ws.timesheets.write_timesheet(compiled_timesheet)
             if is_empty:

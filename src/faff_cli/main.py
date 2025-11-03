@@ -332,20 +332,7 @@ def status(ctx: typer.Context):
 
         # Check for stale timesheets (log changed after compilation)
         typer.echo("\n--- Stale timesheets (log changed) ---")
-        stale = []
-        for ts in existing_timesheets:
-            try:
-                # Get the current log and calculate its hash
-                raw_log = ws.logs.read_log_raw(ts.date)
-                from faff_core.models import Log
-                current_hash = Log.calculate_hash(raw_log)
-
-                # Compare with the hash stored in the timesheet
-                if ts.meta.log_hash and ts.meta.log_hash != current_hash:
-                    stale.append(ts)
-            except:
-                # Log might not exist anymore
-                pass
+        stale = ws.timesheets.find_stale_timesheets()
 
         if stale:
             # Group by audience
@@ -366,7 +353,7 @@ def status(ctx: typer.Context):
 
         # Check for failed submissions
         typer.echo("\n--- Failed submissions ---")
-        failed = [ts for ts in existing_timesheets if ts.meta.submission_status == "failed"]
+        failed = ws.timesheets.find_failed_submissions()
 
         if failed:
             for ts in sorted(failed, key=lambda t: t.date):
