@@ -61,6 +61,9 @@ def add(
 ):
     """
     Create a new remote configuration.
+
+    If the plugin has a config.template.toml, it will be used as the base.
+    Otherwise, a minimal configuration will be created.
     """
     try:
         ws: Workspace = ctx.obj
@@ -75,8 +78,19 @@ def add(
             console.print("\nUse 'faff remote edit' to modify it.")
             raise typer.Exit(1)
 
-        # Create minimal remote config
-        config = f"""id = "{remote_id}"
+        # Check if plugin exists and has a template
+        plugins_dir = Path(ws.storage().base_dir()) / "plugins"
+        plugin_dir = plugins_dir / plugin
+        template_path = plugin_dir / "config.template.toml"
+
+        if template_path.exists():
+            # Use the plugin's template
+            template_content = template_path.read_text()
+            config = template_content.replace("{{instance_name}}", remote_id)
+            console.print(f"[green]Created remote '{remote_id}' from plugin template[/green]")
+        else:
+            # Create minimal remote config
+            config = f"""id = "{remote_id}"
 plugin = "{plugin}"
 
 [connection]
@@ -85,9 +99,11 @@ plugin = "{plugin}"
 [vocabulary]
 # Add static ROAST vocabulary items here (optional)
 """
+            if plugin_dir.exists():
+                console.print(f"[yellow]Note: Plugin '{plugin}' has no template[/yellow]")
+            console.print(f"[green]Created remote '{remote_id}' with minimal config[/green]")
 
         remote_file.write_text(config)
-        console.print(f"[green]Created remote '{remote_id}'[/green]")
         console.print(f"File: {remote_file}")
         console.print(f"\nRun: [cyan]faff remote edit {remote_id}[/cyan] to configure")
 
