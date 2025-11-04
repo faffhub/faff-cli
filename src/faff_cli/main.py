@@ -1,7 +1,7 @@
 import typer
 import humanize
 
-from faff_cli import log, id, plan, start, timesheet, intent, field, remote, plugin
+from faff_cli import log, id, plan, start, timesheet, intent, field, remote, plugin, reflect
 from faff_cli.utils import edit_file
 
 import faff_core
@@ -20,6 +20,7 @@ cli.add_typer(intent.app, name="intent")
 cli.add_typer(field.app, name="field")
 cli.add_typer(remote.app, name="remote")
 cli.add_typer(plugin.app, name="plugin")
+cli.add_typer(reflect.app, name="reflect")
 
 @cli.callback()
 def main(ctx: typer.Context):
