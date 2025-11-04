@@ -26,5 +26,6 @@ def create(ctx: typer.Context, name: str, overwrite: bool = False):
     Create a new identity key pair.
     """
     ws = ctx.obj
-    key = ws.identities.create_identity(name, overwrite)
-    typer.echo(f"Created identity '{name}' with public key {base64.b64encode(key.verify_key.encode()).decode()}")
+    keys = ws.identities.create_identity(name, overwrite)
+    public_key_b64 = base64.b64encode(keys['verifying_key']).decode()
+    typer.echo(f"Created identity '{name}' with public key {public_key_b64}")
