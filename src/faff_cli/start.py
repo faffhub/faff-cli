@@ -126,11 +126,25 @@ def start(ctx: typer.Context):
         raise typer.Exit(1)
 
 def intents_to_choices(intents):
-    choices = []
-
+    """
+    Convert intents to fuzzy select choices.
+    If multiple intents share the same alias, disambiguate by adding the intent_id.
+    """
+    # Count alias occurrences to detect duplicates
+    alias_counts = {}
     for intent in intents:
+        alias_counts[intent.alias] = alias_counts.get(intent.alias, 0) + 1
+
+    choices = []
+    for intent in intents:
+        # If this alias appears more than once, disambiguate with intent_id
+        if alias_counts[intent.alias] > 1:
+            display_name = f"{intent.alias} ({intent.intent_id})"
+        else:
+            display_name = intent.alias
+
         choices.append({
-            "name": intent.alias,
+            "name": display_name,
             "value": intent,
             "decoration": None
         })

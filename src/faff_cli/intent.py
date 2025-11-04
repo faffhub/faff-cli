@@ -18,15 +18,20 @@ app = typer.Typer(help="Manage intents (edit, derive, etc.)")
 
 def intent_to_toml(intent: Intent) -> str:
     """Convert an intent to TOML format for editing."""
-    intent_dict = {
-        "intent_id": intent.intent_id,
+    intent_dict = {}
+
+    # Only include intent_id if it's not empty
+    if intent.intent_id:
+        intent_dict["intent_id"] = intent.intent_id
+
+    intent_dict.update({
         "alias": intent.alias,
         "role": intent.role,
         "objective": intent.objective,
         "action": intent.action,
         "subject": intent.subject,
         "trackers": list(intent.trackers) if intent.trackers else []
-    }
+    })
     return toml.dumps(intent_dict)
 
 
@@ -392,21 +397,34 @@ def derive(ctx: typer.Context, intent_id: str):
         typer.echo(f"Found intent in '{source}' plan ({Path(plan_file_path).name})")
         typer.echo(f"Creating a derived intent based on: {original_intent.alias}")
 
+        # Save the original intent_id for the summary display
+        original_intent_id = original_intent.intent_id
+
+        # Create a new Intent without the intent_id for editing
+        # (Intent objects are immutable, so we can't modify in place)
+        # A new ID will be generated when the intent is added to a plan
+        template_intent = Intent(
+            intent_id="",
+            alias=original_intent.alias,
+            role=original_intent.role,
+            objective=original_intent.objective,
+            action=original_intent.action,
+            subject=original_intent.subject,
+            trackers=original_intent.trackers
+        )
+
         # Edit the intent in the editor
-        derived_intent = edit_intent_in_editor(original_intent)
+        derived_intent = edit_intent_in_editor(template_intent)
 
         if not derived_intent:
             typer.echo("\nNo changes made. Cancelled.")
             return
 
-        # Clear the intent_id so a new one will be generated
-        derived_intent.intent_id = ""
-
         # Show changes summary
         typer.echo("\n" + "="*60)
         typer.echo("DERIVED INTENT SUMMARY")
         typer.echo("="*60)
-        typer.echo(f"Source intent: {original_intent.alias} ({original_intent.intent_id})")
+        typer.echo(f"Source intent: {original_intent.alias} ({original_intent_id})")
         typer.echo(f"New alias: {derived_intent.alias}")
         if derived_intent.role != original_intent.role:
             typer.echo(f"Role: {original_intent.role} → {derived_intent.role}")
