@@ -9,7 +9,7 @@ from faff_core import Workspace
 from faff_cli.output import create_formatter
 from faff_cli.filtering import parse_simple_filters, apply_filters
 
-app = typer.Typer(help="Manage remote plugin instances")
+app = typer.Typer(help="Manage remote plan sources.")
 
 
 @app.command(name="list")
@@ -36,7 +36,7 @@ def list_remotes(
     ),
 ):
     """
-    List all configured remotes with optional filtering.
+    List configured remotes.
 
     Supports filtering by ID and plugin name.
     Shows remote ID, plugin type, and configuration file.

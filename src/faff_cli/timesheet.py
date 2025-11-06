@@ -8,12 +8,12 @@ from faff_cli.output import create_formatter
 from faff_cli.filtering import FilterConfig, apply_filters, apply_date_range, parse_simple_filters
 
 
-app = typer.Typer(help="Do Timesheet stuffs.")
+app = typer.Typer(help="Manage timesheets.")
 
 @app.command()
 def audiences(ctx: typer.Context):
     """
-    List the configured audiences.
+    List configured timesheet audiences.
     """
     ws: Workspace = ctx.obj
 
@@ -106,7 +106,7 @@ def list_timesheets(
     ),
 ):
     """
-    List all generated timesheets with optional filtering.
+    List generated timesheets.
 
     Supports filtering by various fields and date ranges.
     Shows audience, date, compilation time, and submission status.

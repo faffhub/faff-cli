@@ -87,7 +87,7 @@ def log_list(
     ),
 ):
     """
-    List all logs with optional filtering.
+    List logs across all dates.
 
     Supports filtering by various fields and date ranges.
     Shows date, day of week, duration, session count, and status.
