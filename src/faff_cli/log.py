@@ -144,6 +144,10 @@ def summary(ctx: typer.Context, date: str = typer.Argument(None)):
     tracker_totals: Dict[str, datetime.timedelta] = {}
     tracker_source_totals: Dict[str, datetime.timedelta] = {}
 
+    # Track reflection score weighted by duration
+    weighted_score_seconds = 0.0
+    total_reflected_seconds = 0.0
+
     for session in log.timeline:
         # Calculate the duration of the session
         if session.end is None:
@@ -151,11 +155,17 @@ def summary(ctx: typer.Context, date: str = typer.Argument(None)):
         else:
             end_time = session.end
         duration = end_time - session.start
+        duration_seconds = duration.total_seconds()
 
         if session.intent not in intent_tracker:
             intent_tracker[session.intent] = datetime.timedelta()
 
         intent_tracker[session.intent] += duration
+
+        # Calculate weighted reflection score
+        if session.reflection_score is not None:
+            weighted_score_seconds += session.reflection_score * duration_seconds
+            total_reflected_seconds += duration_seconds
 
         for tracker in session.intent.trackers:
             if tracker not in tracker_totals:
@@ -171,6 +181,11 @@ def summary(ctx: typer.Context, date: str = typer.Argument(None)):
     # Format the summary
     summary = f"Summary for {resolved_date.isoformat()}:\n"
     summary += f"\nTotal recorded time: {humanize.precisedelta(log.total_recorded_time(),minimum_unit='minutes')}\n"
+
+    # Add weighted mean reflection score if any sessions have been reflected
+    if total_reflected_seconds > 0:
+        mean_score = weighted_score_seconds / total_reflected_seconds
+        summary += f"Mean reflection score: {mean_score:.2f}/5\n"
     summary += "\nIntent Totals:\n"
     for intent, total in intent_tracker.items():
         summary += f"- {intent.alias}: {humanize.precisedelta(total,minimum_unit='minutes')}\n"
