@@ -1,55 +1,131 @@
 import typer
 from pathlib import Path
+from typing import List, Optional
 
 from rich.console import Console
 from rich.table import Table
 
 from faff_core import Workspace
+from faff_cli.output import create_formatter
+from faff_cli.filtering import parse_simple_filters, apply_filters
 
 app = typer.Typer(help="Manage remote plugin instances")
 
 
 @app.command(name="list")
-def list_remotes(ctx: typer.Context):
+def list_remotes(
+    ctx: typer.Context,
+    filter_strings: List[str] = typer.Argument(
+        None,
+        help="Filters: field=value (exact), field~value (contains), field!=value (not equal)",
+    ),
+    limit: Optional[int] = typer.Option(
+        None,
+        "--limit", "-n",
+        help="Limit number of results",
+    ),
+    json_output: bool = typer.Option(
+        False,
+        "--json",
+        help="Output as JSON",
+    ),
+    plain_output: bool = typer.Option(
+        False,
+        "--plain",
+        help="Output as plain text (no colors)",
+    ),
+):
     """
-    List all configured remotes.
+    List all configured remotes with optional filtering.
+
+    Supports filtering by ID and plugin name.
+    Shows remote ID, plugin type, and configuration file.
+
+    Examples:
+        faff remote list
+        faff remote list id=element
+        faff remote list plugin~jira
+        faff remote list --json
     """
     try:
         ws: Workspace = ctx.obj
-        console = Console()
+
+        # Parse filters using Python-side parsing
+        filters = []
+        if filter_strings:
+            try:
+                filters = parse_simple_filters(filter_strings)
+            except ValueError as e:
+                typer.echo(f"Error: {e}", err=True)
+                raise typer.Exit(1)
 
         remotes_dir = Path(ws.storage().remotes_dir())
         remote_files = list(remotes_dir.glob("*.toml"))
 
-        if not remote_files:
-            console.print("[yellow]No remotes configured[/yellow]")
-            console.print(f"\nRemotes are configured in: {remotes_dir}")
-            console.print("Create a .toml file there to configure a remote.")
-            return
-
-        table = Table(title="Configured Remotes")
-        table.add_column("ID", style="cyan")
-        table.add_column("Plugin", style="green")
-        table.add_column("Config File", style="dim")
-
+        # Build remote data list
+        remote_data = []
         import toml
 
         for remote_file in sorted(remote_files):
             try:
-                remote_data = toml.load(remote_file)
-                remote_id = remote_data.get("id", remote_file.stem)
-                plugin = remote_data.get("plugin", "unknown")
-                table.add_row(remote_id, plugin, remote_file.name)
+                data = toml.load(remote_file)
+                remote_id = data.get("id", remote_file.stem)
+                plugin = data.get("plugin", "unknown")
+
+                remote_data.append({
+                    "id": remote_id,
+                    "plugin": plugin,
+                    "config_file": remote_file.name,
+                })
             except Exception as e:
-                console.print(
-                    f"[yellow]Warning: Failed to read {remote_file.name}: {e}[/yellow]"
-                )
+                # In non-JSON mode, show warnings
+                if not json_output:
+                    typer.echo(f"Warning: Failed to read {remote_file.name}: {e}", err=True)
 
-        console.print(table)
-        console.print(f"\nRemotes directory: {remotes_dir}")
+        # Apply filters
+        if filters:
+            remote_data = apply_filters(remote_data, filters)
 
+        # Sort by ID (alphabetically)
+        remote_data.sort(key=lambda x: x["id"])
+
+        # Apply limit
+        if limit:
+            remote_data = remote_data[:limit]
+
+        # Create output formatter
+        formatter = create_formatter(json_output, plain_output)
+
+        # Define columns for table output
+        columns = [
+            ("id", "ID", "cyan"),
+            ("plugin", "Plugin", "green"),
+            ("config_file", "Config File", "dim"),
+        ]
+
+        # Output results
+        formatter.print_table(
+            remote_data,
+            columns,
+            title="Configured Remotes",
+            total_label="remotes" if remote_data else None,
+        )
+
+        if not remote_data:
+            if not json_output:
+                formatter.print_message("No remotes found matching criteria.", "yellow")
+                formatter.print_message(f"\nRemotes are configured in: {remotes_dir}", "")
+                formatter.print_message("Create a .toml file there to configure a remote.", "")
+        else:
+            if not json_output:
+                typer.echo(f"\nRemotes directory: {remotes_dir}")
+
+    except typer.Exit:
+        raise
     except Exception as e:
         typer.echo(f"Error listing remotes: {e}", err=True)
+        import traceback
+        traceback.print_exc()
         raise typer.Exit(1)
 
 
