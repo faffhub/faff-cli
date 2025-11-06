@@ -43,7 +43,7 @@ def list(
     ),
 ):
     """
-    List all unique values for a ROAST field across all plans with optional filtering.
+    List unique values for a ROAST field.
 
     Shows field values from both plan-level collections and intents, with usage counts.
     Results are sorted by usage (most used first).

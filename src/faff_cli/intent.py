@@ -211,7 +211,7 @@ def ls(
     ),
 ):
     """
-    List all intents from all plans with optional filtering.
+    List intents from all plans.
 
     Shows usage statistics (session count, log count) and sorts by most used first.
 
