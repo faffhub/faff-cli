@@ -3,6 +3,8 @@ import typer
 from typing import List, Optional
 
 from faff_cli import query
+from faff_cli.output import create_formatter
+from faff_cli.filtering import FilterConfig, apply_filters, apply_date_range
 
 from faff_core import Workspace
 from faff_core.models import Intent
@@ -41,18 +43,155 @@ def show(ctx: typer.Context, date: str = typer.Argument(None)):
         typer.echo(f"Error showing log: {e}", err=True)
         raise typer.Exit(1)
 
-@app.command(name="list") # To avoid conflict with list type
-def log_list(ctx: typer.Context):
-    ws: Workspace = ctx.obj
+@app.command(name="list")  # To avoid conflict with list type
+def log_list(
+    ctx: typer.Context,
+    filter_strings: List[str] = typer.Argument(
+        None,
+        help="Filters: field=value (exact), field~value (contains), field!=value (not equal)",
+    ),
+    from_date: Optional[str] = typer.Option(
+        None,
+        "--from", "-f",
+        help="Start date (inclusive), e.g., 2025-01-01 or 'last monday'",
+    ),
+    to_date: Optional[str] = typer.Option(
+        None,
+        "--to", "-t",
+        help="End date (inclusive), e.g., 2025-01-31 or 'today'",
+    ),
+    since: Optional[str] = typer.Option(
+        None,
+        "--since",
+        help="Start date onwards (shortcut for --from with open end)",
+    ),
+    until: Optional[str] = typer.Option(
+        None,
+        "--until",
+        help="Up to date (shortcut for --to with open start)",
+    ),
+    limit: Optional[int] = typer.Option(
+        None,
+        "--limit", "-n",
+        help="Limit number of results",
+    ),
+    json_output: bool = typer.Option(
+        False,
+        "--json",
+        help="Output as JSON",
+    ),
+    plain_output: bool = typer.Option(
+        False,
+        "--plain",
+        help="Output as plain text (no colors)",
+    ),
+):
+    """
+    List all logs with optional filtering.
 
-    typer.echo("Private logs recorded for the following dates:")
-    for log in ws.logs.list_logs():
-        # FIXME: It would be nicer if this included the start and end time of the day
-        typer.echo(
-            f"- {log.date} {log.date.strftime('%a').upper()} "
-            f"{humanize.precisedelta(log.total_recorded_time(), minimum_unit='minutes')}"
-            f"{' *UNCLOSED*' if not log.is_closed() else ''}"
+    Supports filtering by various fields and date ranges.
+    Shows date, day of week, duration, session count, and status.
+
+    Examples:
+        faff log list
+        faff log list --from 2025-01-01 --to 2025-01-31
+        faff log list --since last-monday
+        faff log list status=unclosed
+        faff log list --json
+    """
+    try:
+        ws: Workspace = ctx.obj
+
+        # Parse filters and dates
+        filter_config = FilterConfig(
+            filter_strings=filter_strings,
+            from_date=from_date,
+            to_date=to_date,
+            since=since,
+            until=until,
         )
+        filters, resolved_from, resolved_to = filter_config.get_all(ws)
+
+        # Get all logs
+        logs = ws.logs.list_logs()
+
+        # Convert logs to dictionaries for filtering
+        log_data = []
+        for log in logs:
+            is_closed = log.is_closed()
+            total_time = log.total_recorded_time()
+            session_count = len(log.timeline)
+
+            # Calculate reflection score if any sessions have reflections
+            reflection_scores = [s.reflection_score for s in log.timeline if s.reflection_score is not None]
+            has_reflections = len(reflection_scores) > 0
+            mean_reflection = (sum(reflection_scores) / len(reflection_scores)) if reflection_scores else None
+
+            # Format status based on output mode
+            if json_output or plain_output:
+                status_display = "closed" if is_closed else "unclosed"
+            else:
+                status_display = "✅" if is_closed else "⚠️ unclosed"
+
+            log_data.append({
+                "date": str(log.date),
+                "date_obj": log.date,  # For sorting
+                "day": log.date.strftime("%a").upper(),
+                "duration": humanize.precisedelta(total_time, minimum_unit="minutes"),
+                "duration_seconds": total_time.total_seconds(),  # For filtering
+                "sessions": session_count,
+                "status": status_display,
+                "status_value": "closed" if is_closed else "unclosed",  # For filtering
+                "has_reflections": has_reflections,
+                "mean_reflection": f"{mean_reflection:.1f}" if mean_reflection else "",
+            })
+
+        # Apply date range filter
+        if resolved_from or resolved_to:
+            log_data = apply_date_range(log_data, "date_obj", resolved_from, resolved_to)
+
+        # Apply other filters
+        if filters:
+            log_data = apply_filters(log_data, filters)
+
+        # Sort by date ascending (chronological order - oldest to newest)
+        log_data.sort(key=lambda x: x["date_obj"], reverse=False)
+
+        # Apply limit
+        if limit:
+            log_data = log_data[:limit]
+
+        # Create output formatter
+        formatter = create_formatter(json_output, plain_output)
+
+        # Define columns for table output
+        columns = [
+            ("date", "Date", "cyan"),
+            ("day", "Day", None),
+            ("duration", "Duration", "green"),
+            ("sessions", "Sessions", None),
+            ("mean_reflection", "Reflection", "yellow"),
+            ("status", "Status", None),
+        ]
+
+        # Output results
+        formatter.print_table(
+            log_data,
+            columns,
+            title="Logs",
+            total_label="logs" if log_data else None,
+        )
+
+        if not log_data and not json_output:
+            formatter.print_message("No logs found matching criteria.", "yellow")
+
+    except typer.Exit:
+        raise
+    except Exception as e:
+        typer.echo(f"Error listing logs: {e}", err=True)
+        import traceback
+        traceback.print_exc()
+        raise typer.Exit(1)
 
 @app.command()
 def rm(ctx: typer.Context,
