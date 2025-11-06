@@ -1,4 +1,9 @@
-"""Plugin management commands."""
+"""Plugin management commands.
+
+NOTE: This module intentionally violates the principle of "CLI should not interact directly
+with files on disk". Plugin installation/management is a CLI concern, not a core library
+concern. The Rust library only needs to know how to discover and run plugins, not install them.
+"""
 
 import subprocess
 import shutil
@@ -42,9 +47,9 @@ def install(
     typer.echo(f"Installing plugin '{repo_name}' from {github_url}...")
 
     try:
-        # Clone the repository
+        # Clone the repository (shallow clone to minimize disk usage)
         subprocess.run(
-            ["git", "clone", github_url, str(plugin_dir)],
+            ["git", "clone", "--depth", "1", "--single-branch", github_url, str(plugin_dir)],
             check=True,
             capture_output=True,
             text=True
