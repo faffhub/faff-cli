@@ -147,6 +147,58 @@ class FilterConfig:
 # define their arguments following the patterns shown in the guidelines.
 
 
+class SimpleFilter:
+    """Simple Python-only filter for display purposes (no Rust validation)."""
+    def __init__(self, field: str, operator: str, value: str):
+        self._field = field
+        self._operator = operator
+        self._value = value
+
+    def field(self) -> str:
+        return self._field
+
+    def operator(self) -> str:
+        return self._operator
+
+    def value(self) -> str:
+        return self._value
+
+
+def parse_simple_filters(filter_strings: List[str]) -> List[SimpleFilter]:
+    """
+    Parse filter strings into SimpleFilter objects (Python-only, no Rust validation).
+
+    Args:
+        filter_strings: List of filter strings
+
+    Returns:
+        List of SimpleFilter objects
+
+    Raises:
+        ValueError: If any filter string is invalid
+    """
+    filters = []
+    for filter_str in filter_strings:
+        if "!=" in filter_str:
+            parts = filter_str.split("!=", 1)
+            if len(parts) != 2:
+                raise ValueError(f"Invalid filter format: {filter_str}")
+            filters.append(SimpleFilter(parts[0].strip(), "!=", parts[1].strip()))
+        elif "=" in filter_str:
+            parts = filter_str.split("=", 1)
+            if len(parts) != 2:
+                raise ValueError(f"Invalid filter format: {filter_str}")
+            filters.append(SimpleFilter(parts[0].strip(), "=", parts[1].strip()))
+        elif "~" in filter_str:
+            parts = filter_str.split("~", 1)
+            if len(parts) != 2:
+                raise ValueError(f"Invalid filter format: {filter_str}")
+            filters.append(SimpleFilter(parts[0].strip(), "~", parts[1].strip()))
+        else:
+            raise ValueError(f"Invalid filter format: {filter_str}. Must contain =, ~, or !=")
+    return filters
+
+
 def apply_filters(items: List[dict], filters: List[Filter]) -> List[dict]:
     """
     Apply filters to a list of dictionaries.
