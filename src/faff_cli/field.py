@@ -1,7 +1,10 @@
 import typer
+from typing import List, Optional
 from rich.console import Console
 
 from faff_core import Workspace
+from faff_cli.output import create_formatter
+from faff_cli.filtering import parse_simple_filters, apply_filters
 
 app = typer.Typer(help="Manage ROAST fields (roles, objectives, actions, subjects, trackers)")
 
@@ -19,11 +22,37 @@ PLURAL_MAP = {
 def list(
     ctx: typer.Context,
     field: str = typer.Argument(..., help="Field to list (role, objective, action, subject, tracker)"),
+    filter_strings: List[str] = typer.Argument(
+        None,
+        help="Filters: field=value (exact), field~value (contains), field!=value (not equal)",
+    ),
+    limit: Optional[int] = typer.Option(
+        None,
+        "--limit", "-n",
+        help="Limit number of results",
+    ),
+    json_output: bool = typer.Option(
+        False,
+        "--json",
+        help="Output as JSON",
+    ),
+    plain_output: bool = typer.Option(
+        False,
+        "--plain",
+        help="Output as plain text (no colors)",
+    ),
 ):
     """
-    List all unique values for a ROAST field across all plans.
+    List all unique values for a ROAST field across all plans with optional filtering.
 
     Shows field values from both plan-level collections and intents, with usage counts.
+    Results are sorted by usage (most used first).
+
+    Examples:
+        faff field list role
+        faff field list action value~meeting
+        faff field list role intents>10
+        faff field list objective --json
     """
     if field not in VALID_FIELDS:
         typer.echo(f"Error: field must be one of: {', '.join(VALID_FIELDS)}", err=True)
@@ -31,7 +60,15 @@ def list(
 
     try:
         ws: Workspace = ctx.obj
-        console = Console()
+
+        # Parse filters using Python-side parsing
+        filters = []
+        if filter_strings:
+            try:
+                filters = parse_simple_filters(filter_strings)
+            except ValueError as e:
+                typer.echo(f"Error: {e}", err=True)
+                raise typer.Exit(1)
 
         plural_field = PLURAL_MAP[field]
 
@@ -49,26 +86,57 @@ def list(
         for value, dates in log_dates_dict.items():
             log_count[value] = len(dates)
 
-        # Display results
-        if not values:
-            console.print(f"[yellow]No {plural_field} found[/yellow]")
-            return
-
-        console.print(f"[bold]{plural_field.title()}:[/bold]\n")
-        for value in sorted(values):
+        # Build field data list
+        field_data = []
+        for value in values:
             intents = intent_count.get(value, 0)
             sessions = session_count.get(value, 0)
             logs = log_count.get(value, 0)
 
-            console.print(
-                f"  {value} [dim]({intents} intent{'s' if intents != 1 else ''}, "
-                f"{sessions} session{'s' if sessions != 1 else ''}, "
-                f"{logs} log{'s' if logs != 1 else ''})[/dim]"
-            )
+            field_data.append({
+                "value": value,
+                "intents": intents,
+                "sessions": sessions,
+                "logs": logs,
+            })
 
-        console.print(f"\n[bold]Total:[/bold] {len(values)} unique {plural_field}")
+        # Apply filters
+        if filters:
+            field_data = apply_filters(field_data, filters)
 
+        # Sort by usage (most used first = most sessions)
+        field_data.sort(key=lambda x: (x["sessions"], x["intents"], x["logs"]), reverse=True)
+
+        # Apply limit
+        if limit:
+            field_data = field_data[:limit]
+
+        # Create output formatter
+        formatter = create_formatter(json_output, plain_output)
+
+        # Define columns for table output
+        columns = [
+            ("value", "Value", "cyan"),
+            ("intents", "Intents", "green"),
+            ("sessions", "Sessions", "green"),
+            ("logs", "Logs", "green"),
+        ]
+
+        # Output results
+        formatter.print_table(
+            field_data,
+            columns,
+            title=plural_field.title(),
+            total_label=f"unique {plural_field}" if field_data else None,
+        )
+
+        if not field_data and not json_output:
+            formatter.print_message(f"No {plural_field} found matching criteria.", "yellow")
+
+    except typer.Exit:
+        raise
     except Exception as e:
+        plural_field = PLURAL_MAP.get(field, field)
         typer.echo(f"Error listing {plural_field}: {e}", err=True)
         import traceback
         traceback.print_exc()
