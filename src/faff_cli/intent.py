@@ -9,6 +9,8 @@ from rich.console import Console
 from rich.markup import escape
 
 from faff_cli.utils import edit_file
+from faff_cli.output import create_formatter
+from faff_cli.filtering import FilterConfig, apply_filters
 
 from faff_core import Workspace, Filter
 from faff_core.models import Intent
@@ -93,8 +95,8 @@ def display_intents_compact(intents: List[dict], console: Console) -> None:
             valid_str += " →"
 
         # Escape intent_id and alias to prevent Rich from styling them
-        intent_id_escaped = escape(intent_info['intent_id'])
-        alias_escaped = escape(intent_info['alias'])
+        intent_id_escaped = escape(intent_info['intent_id'] or "(no id)")
+        alias_escaped = escape(intent_info['alias'] or "(no alias)")
 
         # Get usage stats
         sessions = intent_info.get("session_count", 0)
@@ -109,17 +111,27 @@ def display_intents_compact(intents: List[dict], console: Console) -> None:
         )
 
         # Second line: As <role> I do <action> to achieve <objective> for <subject>
-        role_fmt = format_field(intent_info['role'])
-        action_fmt = format_field(intent_info['action'])
-        objective_fmt = format_field(intent_info['objective'])
-        subject_fmt = format_field(intent_info['subject'])
+        # Only show if at least one field is present
+        role = intent_info.get('role') or ""
+        action = intent_info.get('action') or ""
+        objective = intent_info.get('objective') or ""
+        subject = intent_info.get('subject') or ""
 
-        console.print(
-            f"  As {role_fmt} "
-            f"I do {action_fmt} "
-            f"to achieve {objective_fmt} "
-            f"for {subject_fmt}"
-        )
+        if role or action or objective or subject:
+            role_fmt = format_field(role) if role else "[dim](no role)[/dim]"
+            action_fmt = format_field(action) if action else "[dim](no action)[/dim]"
+            objective_fmt = format_field(objective) if objective else "[dim](no objective)[/dim]"
+            subject_fmt = format_field(subject) if subject else "[dim](no subject)[/dim]"
+
+            console.print(
+                f"  As {role_fmt} "
+                f"I do {action_fmt} "
+                f"to achieve {objective_fmt} "
+                f"for {subject_fmt}"
+            )
+        else:
+            console.print("  [dim](incomplete intent - no ROAST fields)[/dim]")
+
         console.print()  # Blank line between intents
 
 
@@ -175,29 +187,50 @@ def ls(
     ctx: typer.Context,
     filter_strings: List[str] = typer.Argument(
         None,
-        help="Filters in the form key=value, key~value, or key!=value (e.g. alias~sync, role=element:head-of-customer-success).",
+        help="Filters: field=value (exact), field~value (contains), field!=value (not equal)",
     ),
     table: bool = typer.Option(
         False,
         "--table",
         help="Display in table format instead of compact format",
     ),
+    limit: Optional[int] = typer.Option(
+        None,
+        "--limit", "-n",
+        help="Limit number of results",
+    ),
+    json_output: bool = typer.Option(
+        False,
+        "--json",
+        help="Output as JSON",
+    ),
+    plain_output: bool = typer.Option(
+        False,
+        "--plain",
+        help="Output as plain text (no colors)",
+    ),
 ):
     """
-    List all intents from all plans.
+    List all intents from all plans with optional filtering.
 
-    Supports filtering using the same syntax as faff query:
-    - key=value (exact match)
-    - key~value (contains match)
-    - key!=value (not equal)
+    Shows usage statistics (session count, log count) and sorts by most used first.
 
-    Supported fields: intent_id, alias, role, objective, action, subject, trackers, source
+    Supported filter fields: intent_id, alias, role, objective, action, subject, trackers, source
+
+    Examples:
+        faff intent list
+        faff intent list alias~meeting
+        faff intent list role=engineer objective~revenue
+        faff intent list --table
+        faff intent list --json
+        faff intent list --limit 10
     """
     try:
         ws: Workspace = ctx.obj
 
-        # Parse filters
-        filters = [Filter.parse(f) for f in filter_strings] if filter_strings else []
+        # Parse filters using unified filtering
+        filter_config = FilterConfig(filter_strings=filter_strings)
+        filters, _, _ = filter_config.get_all(ws)
 
         # Get all plan files
         plan_dir = Path(ws.storage().plan_dir())
@@ -213,17 +246,18 @@ def ls(
                 valid_until = plan_data.get("valid_until", "")
 
                 for intent_dict in plan_data.get("intents", []):
+                    # Handle incomplete intents gracefully
                     intent_info = {
-                        "intent_id": intent_dict.get("intent_id", ""),
-                        "alias": intent_dict.get("alias", ""),
-                        "role": intent_dict.get("role", ""),
-                        "objective": intent_dict.get("objective", ""),
-                        "action": intent_dict.get("action", ""),
-                        "subject": intent_dict.get("subject", ""),
-                        "trackers": ", ".join(intent_dict.get("trackers", [])),
+                        "intent_id": intent_dict.get("intent_id") or "",
+                        "alias": intent_dict.get("alias") or "(no alias)",
+                        "role": intent_dict.get("role") or "",
+                        "objective": intent_dict.get("objective") or "",
+                        "action": intent_dict.get("action") or "",
+                        "subject": intent_dict.get("subject") or "",
+                        "trackers": ", ".join(intent_dict.get("trackers", [])) if intent_dict.get("trackers") else "",
                         "source": source,
-                        "valid_from": valid_from,
-                        "valid_until": valid_until,
+                        "valid_from": str(valid_from),
+                        "valid_until": str(valid_until) if valid_until else "",
                     }
                     all_intents.append(intent_info)
             except Exception:
@@ -256,25 +290,48 @@ def ls(
             intent_info["session_count"] = session_count.get(intent_id, 0)
             intent_info["log_count"] = len(log_count.get(intent_id, set()))
 
-        # Apply filters
-        filtered_intents = []
-        for intent_info in all_intents:
-            # Check all filters (AND logic)
-            if all(matches_filter(intent_info, f) for f in filters):
-                filtered_intents.append(intent_info)
+        # Apply filters using unified filtering
+        if filters:
+            all_intents = apply_filters(all_intents, filters)
 
-        # Sort by session count (most used first)
-        filtered_intents.sort(key=lambda x: x.get("session_count", 0), reverse=True)
+        # Sort by session count (most used first - usage-based data)
+        all_intents.sort(key=lambda x: x.get("session_count", 0), reverse=True)
 
-        # Display results (disable auto-highlighting to prevent unwanted styling)
-        console = Console(highlight=False)
-        if table:
-            display_intents_table(filtered_intents, console)
+        # Apply limit
+        if limit:
+            all_intents = all_intents[:limit]
+
+        # Output based on mode
+        if json_output:
+            # JSON output
+            formatter = create_formatter(json_output=True)
+            formatter.print_table(all_intents, [], title="Intents")
+        elif plain_output:
+            # Plain text output (tab-separated)
+            formatter = create_formatter(plain_output=True)
+            columns = [
+                ("intent_id", "Intent ID", None),
+                ("alias", "Alias", None),
+                ("role", "Role", None),
+                ("objective", "Objective", None),
+                ("action", "Action", None),
+                ("subject", "Subject", None),
+                ("session_count", "Sessions", None),
+                ("log_count", "Logs", None),
+            ]
+            formatter.print_table(all_intents, columns, total_label="intents")
         else:
-            display_intents_compact(filtered_intents, console)
+            # Rich output (existing compact/table formats)
+            console = Console(highlight=False)
+            if table:
+                display_intents_table(all_intents, console)
+            else:
+                display_intents_compact(all_intents, console)
 
-        console.print(f"[bold]Total:[/bold] {len(filtered_intents)} intent(s)")
+            console.print(f"[bold]Total:[/bold] {len(all_intents)} intent(s)")
 
+    except typer.Exit:
+        raise
     except Exception as e:
         typer.echo(f"Error listing intents: {e}", err=True)
         import traceback
