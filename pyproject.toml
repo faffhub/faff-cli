@@ -7,7 +7,7 @@ authors = [{name="Thomas Lant", email="thomas@lant.uk"}]
 license = { text = "AGPL-3.0-or-later" }
 requires-python = ">=3.11"
 dependencies = [
-    "faff-core>=0.1.11",
+    "faff-core>=0.1.12",
     "typer[all]",
     "rich",
     "python-slugify",
