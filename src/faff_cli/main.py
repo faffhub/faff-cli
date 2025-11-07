@@ -399,11 +399,36 @@ def status(ctx: typer.Context):
 @cli.command()
 def stop(ctx: typer.Context):
     """
-    Stop the current timeline entry.
+    Stop the currently active session.
     """
     try:
+        import humanize
         ws: Workspace = ctx.obj
-        typer.echo(ws.logs.stop_current_session())
+
+        # Get the current log to see what we're stopping
+        log = ws.logs.get_log_or_create(ws.today())
+        active = log.active_session()
+
+        if not active:
+            typer.echo("No active session to stop", err=True)
+            raise typer.Exit(1)
+
+        # Capture the details before stopping
+        intent_alias = active.intent.alias
+        start_time = active.start
+
+        # Stop the session
+        ws.logs.stop_current_session()
+
+        # Calculate duration
+        end_time = ws.now()
+        duration = end_time - start_time
+
+        # Show feedback
+        typer.echo(f"Stopped '{intent_alias}'")
+        typer.echo(f"  Started: {start_time.strftime('%H:%M:%S')}")
+        typer.echo(f"  Ended:   {end_time.strftime('%H:%M:%S')}")
+        typer.echo(f"  Duration: {humanize.precisedelta(duration, minimum_unit='seconds')}")
     except Exception as e:
         typer.echo(f"Error stopping session: {e}", err=True)
         raise typer.Exit(1)
