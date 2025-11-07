@@ -98,7 +98,7 @@ def input_new_intent(alias: str, ws: Workspace) -> Intent:
 @app.callback(invoke_without_command=True)
 def start(
     ctx: typer.Context,
-    time: str = typer.Argument(None, help="Start time (e.g., '14:30', 'now')"),
+    since: str = typer.Option(None, "--since", help="Start time (e.g., '14:30', 'now')"),
     continue_from_last: bool = typer.Option(False, "--continue", "-c", help="Start at the end of the previous session"),
 ):
     """Start a new task or activity."""
@@ -121,9 +121,35 @@ def start(
                 raise typer.Exit(1)
 
             start_time = last_session.end
-        elif time and time != "now":
-            # Parse the provided time
-            start_time = ws.parse_natural_datetime(time)
+        elif since:
+            # Parse the provided time (restricted to today)
+            start_time = ws.parse_natural_datetime(since)
+
+            # Validate against existing timeline
+            log = ws.logs.get_log_or_create(date)
+
+            # Check that start_time is not in the future
+            now = ws.now()
+            if start_time > now:
+                typer.echo(f"Error: Cannot start in the future. Parsed time {start_time.strftime('%H:%M:%S')} is after current time {now.strftime('%H:%M:%S')}", err=True)
+                raise typer.Exit(1)
+
+            # Check for conflicts with existing sessions
+            if log.timeline:
+                last_session = log.timeline[-1]
+
+                # If there's an active session, start_time must be after its start
+                # (this allows "interrupting" the current session at any point after it began)
+                if last_session.end is None:
+                    if start_time < last_session.start:
+                        typer.echo(f"Error: Cannot start at {start_time.strftime('%H:%M:%S')}. There is an active session that started at {last_session.start.strftime('%H:%M:%S')}.", err=True)
+                        typer.echo("The --since time must be after the current session started.", err=True)
+                        raise typer.Exit(1)
+                else:
+                    # No active session - check we're not overlapping with the last completed one
+                    if start_time < last_session.end:
+                        typer.echo(f"Error: Cannot start at {start_time.strftime('%H:%M:%S')}. The previous session ended at {last_session.end.strftime('%H:%M:%S')}.", err=True)
+                        raise typer.Exit(1)
         else:
             # Capture current time NOW, before any prompts
             start_time = ws.now()
