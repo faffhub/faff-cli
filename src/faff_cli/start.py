@@ -96,10 +96,37 @@ def input_new_intent(alias: str, ws: Workspace) -> Intent:
     return intent_with_id   
 
 @app.callback(invoke_without_command=True)
-def start(ctx: typer.Context):
+def start(
+    ctx: typer.Context,
+    time: str = typer.Argument(None, help="Start time (e.g., '14:30', 'now')"),
+    continue_from_last: bool = typer.Option(False, "--continue", "-c", help="Start at the end of the previous session"),
+):
+    """Start a new task or activity."""
     try:
+        import datetime
         ws: Workspace = ctx.obj
         date = ws.today()
+
+        # Determine start time
+        if continue_from_last:
+            # Get the last session's end time
+            log = ws.logs.get_log_or_create(date)
+            if not log.timeline:
+                typer.echo("No previous session found to continue from", err=True)
+                raise typer.Exit(1)
+
+            last_session = log.timeline[-1]
+            if last_session.end is None:
+                typer.echo("Previous session is still active", err=True)
+                raise typer.Exit(1)
+
+            start_time = last_session.end
+        elif time and time != "now":
+            # Parse the provided time
+            start_time = ws.parse_natural_datetime(time)
+        else:
+            # Capture current time NOW, before any prompts
+            start_time = ws.now()
 
         existing_intents = ws.plans.get_intents(date)
 
@@ -120,7 +147,10 @@ def start(ctx: typer.Context):
             intent = chosen_intent.value
 
         note = input("? Note (optional): ")
-        typer.echo(ws.logs.start_intent_now(intent, note if note else None))
+
+        # Use start_intent_at to preserve the captured start time
+        ws.logs.start_intent_at(intent, start_time, note if note else None)
+        typer.echo(f"Started '{intent.alias}' at {start_time.strftime('%H:%M:%S')}")
     except Exception as e:
         typer.echo(f"Error starting session: {e}", err=True)
         raise typer.Exit(1)
