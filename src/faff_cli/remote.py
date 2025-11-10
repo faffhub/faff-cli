@@ -173,7 +173,7 @@ plugin = "{plugin}"
 # Add your connection details here
 
 [vocabulary]
-# Add static ROAST vocabulary items here (optional)
+# Add static ASTRO vocabulary items here (optional)
 """
             if plugin_dir.exists():
                 console.print(f"[yellow]Note: Plugin '{plugin}' has no template[/yellow]")

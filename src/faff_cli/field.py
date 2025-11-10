@@ -6,7 +6,7 @@ from faff_core import Workspace
 from faff_cli.output import create_formatter
 from faff_cli.filtering import parse_simple_filters, apply_filters
 
-app = typer.Typer(help="Manage ROAST fields (roles, objectives, actions, subjects, trackers)")
+app = typer.Typer(help="Manage ASTRO fields (actions, subjects, trackers, roles, objectives)")
 
 VALID_FIELDS = ["role", "objective", "action", "subject", "tracker"]
 PLURAL_MAP = {
@@ -43,7 +43,7 @@ def list(
     ),
 ):
     """
-    List unique values for a ROAST field.
+    List unique values for a ASTRO field.
 
     Shows field values from both plan-level collections and intents, with usage counts.
     Results are sorted by usage (most used first).
@@ -154,7 +154,7 @@ def replace(
     Replace a field value across all plans and logs.
 
     This will:
-    - Update the field in plan-level ROAST collections
+    - Update the field in plan-level ASTRO collections
     - Update all intents that use the old value
     - Update all log sessions that reference those intents
     """

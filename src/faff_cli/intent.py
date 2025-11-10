@@ -132,7 +132,7 @@ def display_intents_compact(intents: List[dict], console: Console) -> None:
                 f"for {subject_fmt}"
             )
         else:
-            console.print("  [dim](incomplete intent - no ROAST fields)[/dim]")
+            console.print("  [dim](incomplete intent - no ASTRO fields)[/dim]")
 
         console.print()  # Blank line between intents
 
