@@ -49,19 +49,23 @@ def input_new_intent(alias: str, ws: Workspace) -> Intent:
 
     role = fuzzy_select(
         "What job role are you playing in this activity?",
-        nicer([x for x in ws.plans.get_roles(date)])
+        nicer([x for x in ws.plans.get_roles(date)]),
+        escapable=True
     )
     objective = fuzzy_select(
         "What is the main goal of this activity?",
-        nicer([x for x in ws.plans.get_objectives(date)])
+        nicer([x for x in ws.plans.get_objectives(date)]),
+        escapable=True
     )
     action = fuzzy_select(
         "What action are you doing?",
-         nicer([x for x in ws.plans.get_actions(date)])
+         nicer([x for x in ws.plans.get_actions(date)]),
+         escapable=True
 )
     subject = fuzzy_select(
         "Who or what is this for or about?",
-        nicer([x for x in ws.plans.get_subjects(date)])
+        nicer([x for x in ws.plans.get_subjects(date)]),
+        escapable=True
     )
 
     trackers: List[str] = []

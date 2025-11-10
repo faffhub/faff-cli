@@ -11,16 +11,22 @@ from pathlib import Path
 
 cli = typer.Typer()
 
-cli.add_typer(log.app, name="log")
-cli.add_typer(id.app, name="id")
-cli.add_typer(plan.app, name="plan")
-cli.add_typer(start.app, name="start")
-cli.add_typer(timesheet.app, name="timesheet")
-cli.add_typer(intent.app, name="intent")
-cli.add_typer(field.app, name="field")
-cli.add_typer(remote.app, name="remote")
-cli.add_typer(plugin.app, name="plugin")
-cli.add_typer(reflect.app, name="reflect")
+# Track your Time
+cli.add_typer(start.app, name="start", rich_help_panel="Track your Time")
+cli.add_typer(reflect.app, name="reflect", rich_help_panel="Track your Time")
+
+# Compile and Submit Timesheets
+cli.add_typer(timesheet.app, name="timesheet", rich_help_panel="Compile and Submit Timesheets")
+
+# Maintain Plans and Intents
+cli.add_typer(plan.app, name="plan", rich_help_panel="Maintain Plans and Intents")
+cli.add_typer(intent.app, name="intent", rich_help_panel="Maintain Plans and Intents")
+cli.add_typer(field.app, name="field", rich_help_panel="Maintain Plans and Intents")
+
+# Ledger Setup
+cli.add_typer(remote.app, name="remote", rich_help_panel="Ledger Setup")
+cli.add_typer(id.app, name="id", rich_help_panel="Ledger Setup")
+cli.add_typer(plugin.app, name="plugin", rich_help_panel="Ledger Setup")
 
 @cli.callback()
 def main(ctx: typer.Context):
@@ -30,45 +36,69 @@ def main(ctx: typer.Context):
     else:
         ctx.obj = Workspace()
 
-@cli.command()
-def init(ctx: typer.Context,
-         target_dir_str: str,
-         force: bool = typer.Option(False, "--force", help="Allow init inside a parent faff repo")):
+@cli.command(rich_help_panel="Ledger Setup")
+def init(
+    ctx: typer.Context,
+    target_dir_str: str = typer.Argument(..., help="Directory to initialize as a faff ledger"),
+    force: bool = typer.Option(False, "--force", help="Allow init inside a parent faff ledger"),
+):
     """
-    cli: faff init
-    Initialise faff obj.
+    Initialize a new faff ledger.
+
+    Creates the directory structure and configuration needed for a faff ledger
+    in the specified directory.
+
+    Examples:
+        faff init .
+        faff init ~/projects/my-ledger
+        faff init /path/to/ledger --force
     """
     # init doesn't need a workspace - ctx.obj will be None
     target_dir = Path(target_dir_str)
     if not target_dir.exists():
-        typer.echo(f"Target directory {target_dir} does not exist.")
-        exit(1)
+        typer.echo(f"Error: Directory {target_dir} does not exist.", err=True)
+        raise typer.Exit(1)
 
-    typer.echo("Initialising faff repository.")
+    typer.echo("Initializing faff ledger...")
     try:
         storage = FileSystemStorage.init_at(str(target_dir), force)
-        typer.echo(f"Initialised faff repository at {storage.root_dir()}.")
+        typer.echo(f"✓ Initialized faff ledger at {storage.root_dir()}.")
     except Exception as e:
-        typer.echo(f"Failed to initialise faff repository: {e}")
-        exit(1)
+        typer.echo(f"Error: Failed to initialize faff ledger: {e}", err=True)
+        raise typer.Exit(1)
 
-@cli.command()
+@cli.command(rich_help_panel="Ledger Setup")
 def config(ctx: typer.Context):
     """
-    cli: faff config
-    Edit the faff configuration in your preferred editor.
+    Edit ledger configuration.
+
+    Opens the ledger's configuration file in your default editor.
+
+    Examples:
+        faff config
     """
     ws = ctx.obj
     from pathlib import Path
     if edit_file(Path(ws.storage().config_file())):
-        typer.echo("Configuration file was updated.")
+        typer.echo("✓ Configuration file was updated.")
     else:
         typer.echo("No changes detected.")
 
-@cli.command()
-def pull(ctx: typer.Context, remote: str = typer.Argument(None, help="Remote to pull from (omit to pull from all)")):
+@cli.command(rich_help_panel="Track your Time")
+def pull(
+    ctx: typer.Context,
+    remote: str = typer.Argument(None, help="Remote to pull from (omit for all)"),
+):
     """
-    Pull plans from a remote (or all remotes).
+    Pull plans from remote sources.
+
+    Downloads the latest plans from configured remotes. Omit the remote name to
+    pull from all configured remotes.
+
+    Examples:
+        faff pull
+        faff pull element
+        faff pull mycompany
     """
     try:
         ws: Workspace = ctx.obj
@@ -94,13 +124,24 @@ def pull(ctx: typer.Context, remote: str = typer.Argument(None, help="Remote to 
         typer.echo(f"Error pulling plans: {e}", err=True)
         raise typer.Exit(1)
 
-@cli.command()
-def compile(ctx: typer.Context,
-            date: str = typer.Argument(None, help="Specific date to compile (omit to compile all uncompiled logs)"),
-            audience: str = typer.Option(None, "--audience", "-a", help="Specific audience to compile for (omit for all)")):
+@cli.command(rich_help_panel="Compile and Submit Timesheets")
+def compile(
+    ctx: typer.Context,
+    date: str = typer.Argument(None, help="Specific date to compile (omit for all uncompiled)"),
+    audience: str = typer.Option(None, "--audience", "-a", help="Specific audience (omit for all)"),
+):
     """
-    Compile timesheets. By default, compiles all logs that don't have timesheets yet.
-    Specify a date to force recompile a specific date.
+    Compile timesheets from logs.
+
+    Compiles time logs into timesheets for configured audiences. By default,
+    compiles all logs that don't have timesheets yet. Specify a date to force
+    recompile.
+
+    Examples:
+        faff compile
+        faff compile 2025-01-15
+        faff compile --audience element
+        faff compile yesterday --audience mycompany
     """
     try:
         ws = ctx.obj
@@ -218,13 +259,23 @@ def compile(ctx: typer.Context,
         typer.echo(f"Error compiling timesheet: {e}", err=True)
         raise typer.Exit(1)
 
-@cli.command()
-def push(ctx: typer.Context,
-         date: str = typer.Argument(None, help="Specific date to push (omit to push all unsubmitted timesheets)"),
-         audience: str = typer.Option(None, "--audience", "-a", help="Specific audience to push to (omit for all)")):
+@cli.command(rich_help_panel="Compile and Submit Timesheets")
+def push(
+    ctx: typer.Context,
+    date: str = typer.Argument(None, help="Specific date to push (omit for all unsubmitted)"),
+    audience: str = typer.Option(None, "--audience", "-a", help="Specific audience (omit for all)"),
+):
     """
-    Push timesheets. By default, pushes all compiled timesheets that haven't been submitted yet.
-    Specify a date to force push a specific date.
+    Submit timesheets to audiences.
+
+    Pushes compiled timesheets to their configured audiences. By default, pushes
+    all unsubmitted timesheets. Specify a date to force push a specific date.
+
+    Examples:
+        faff push
+        faff push 2025-01-15
+        faff push --audience element
+        faff push yesterday --audience mycompany
     """
     try:
         ws: Workspace = ctx.obj
@@ -265,15 +316,21 @@ def push(ctx: typer.Context,
         typer.echo(f"Error pushing timesheet: {e}", err=True)
         raise typer.Exit(1)
 
-@cli.command()
+@cli.command(rich_help_panel="Track your Time")
 def status(ctx: typer.Context):
     """
-    Show the status of the faff repository, including what needs compiling/pushing.
+    Show ledger status.
+
+    Displays current session, logs needing compilation, stale timesheets,
+    failed submissions, and timesheets ready to submit.
+
+    Examples:
+        faff status
     """
     try:
         ws: Workspace = ctx.obj
-        typer.echo(f"Status for faff repo root at: {ws.storage().root_dir()}")
-        typer.echo(f"faff-core library version: {faff_core.version()}\n")
+        typer.echo(f"Ledger: {ws.storage().root_dir()}")
+        typer.echo(f"faff-core version: {faff_core.version()}\n")
 
         # Today's status
         log = ws.logs.get_log_or_create(ws.today())
@@ -396,10 +453,18 @@ def status(ctx: typer.Context):
         typer.echo(f"Error getting status: {e}", err=True)
         raise typer.Exit(1)
 
-@cli.command()
+# Register log after status
+cli.add_typer(log.app, name="log", rich_help_panel="Track your Time")
+
+@cli.command(rich_help_panel="Track your Time")
 def stop(ctx: typer.Context):
     """
-    Stop the currently active session.
+    Stop the current session.
+
+    Ends the currently active time tracking session.
+
+    Examples:
+        faff stop
     """
     try:
         import humanize

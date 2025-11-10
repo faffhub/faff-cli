@@ -11,6 +11,8 @@ from rich.markup import escape
 from faff_cli.utils import edit_file
 from faff_cli.output import create_formatter
 from faff_cli.filtering import FilterConfig, apply_filters
+from faff_cli.ui import fuzzy_select
+from faff_cli.start import nicer, nicer_tracker
 
 from faff_core import Workspace, Filter
 from faff_core.models import Intent
@@ -59,7 +61,7 @@ def edit_intent_in_editor(intent: Intent) -> Optional[Intent]:
         Updated Intent if changes were made, None if no changes
     """
     # Create a temporary file with the intent as TOML
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.toml', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.faff.toml', delete=False) as f:
         f.write(intent_to_toml(intent))
         temp_path = Path(f.name)
 
@@ -618,4 +620,187 @@ def edit(ctx: typer.Context, intent_id: str):
 
     except Exception as e:
         typer.echo(f"Error editing intent: {e}", err=True)
+        raise typer.Exit(1)
+
+
+@app.command()
+def complete(
+    ctx: typer.Context,
+    intent_id: Optional[str] = typer.Argument(None, help="Intent ID to complete (if not provided, shows incomplete intents)")
+):
+    """
+    Complete an intent by filling in missing fields interactively.
+
+    This command helps you fill in fields that were skipped during 'faff start'.
+    Only prompts for fields that are currently null/empty.
+    """
+    try:
+        ws: Workspace = ctx.obj
+        date = ws.today()
+
+        # If no intent_id provided, find and show incomplete intents
+        if not intent_id:
+            all_intents = ws.plans.get_intents(date)
+            incomplete_intents = [
+                intent for intent in all_intents
+                if not intent.role or not intent.objective or not intent.action or not intent.subject
+            ]
+
+            if not incomplete_intents:
+                typer.echo("No incomplete intents found! All intents have all fields filled.")
+                return
+
+            typer.echo(f"\nFound {len(incomplete_intents)} incomplete intent(s):\n")
+
+            # Show incomplete intents with missing fields highlighted
+            for intent in incomplete_intents:
+                missing = []
+                if not intent.role: missing.append("role")
+                if not intent.objective: missing.append("objective")
+                if not intent.action: missing.append("action")
+                if not intent.subject: missing.append("subject")
+
+                typer.echo(f"  {intent.alias} ({intent.intent_id})")
+                typer.echo(f"    Missing: {', '.join(missing)}\n")
+
+            # Let user select which one to complete
+            choices = [
+                {
+                    "name": f"{intent.alias} (missing: {', '.join([f for f in ['role', 'objective', 'action', 'subject'] if not getattr(intent, f)])})",
+                    "value": intent.intent_id,
+                    "decoration": intent.intent_id
+                }
+                for intent in incomplete_intents
+            ]
+
+            selected = fuzzy_select(
+                "Which intent would you like to complete?",
+                choices,
+                escapable=True
+            )
+
+            if not selected:
+                typer.echo("Cancelled.")
+                return
+
+            intent_id = selected.value
+
+        # Find the intent
+        result = ws.plans.find_intent_by_id(intent_id)
+        if not result:
+            typer.echo(f"Error: Intent with ID '{intent_id}' not found.", err=True)
+            raise typer.Exit(1)
+
+        source, original_intent, plan_file_path = result
+
+        # Check if it's a local intent
+        if not original_intent.intent_id.startswith("local:"):
+            typer.echo(f"\nError: This intent is from a remote source.")
+            typer.echo(f"Intent ID: {original_intent.intent_id}")
+            typer.echo("Remote intents cannot be edited.")
+            typer.echo("Use 'faff intent derive' to create a local copy instead.")
+            raise typer.Exit(1)
+
+        typer.echo(f"\nCompleting intent: {original_intent.alias}")
+        typer.echo(f"From: {source} ({Path(plan_file_path).name})\n")
+
+        # Prompt for missing fields only
+        updated_fields = {}
+
+        if not original_intent.role:
+            role = fuzzy_select(
+                "What job role are you playing in this activity?",
+                nicer([x for x in ws.plans.get_roles(date)]),
+                escapable=True
+            )
+            if role:
+                updated_fields['role'] = role.value
+                typer.echo(f"  ✓ Set role: {role.value}")
+        else:
+            typer.echo(f"  ✓ Role already set: {original_intent.role}")
+
+        if not original_intent.objective:
+            objective = fuzzy_select(
+                "What is the main goal of this activity?",
+                nicer([x for x in ws.plans.get_objectives(date)]),
+                escapable=True
+            )
+            if objective:
+                updated_fields['objective'] = objective.value
+                typer.echo(f"  ✓ Set objective: {objective.value}")
+        else:
+            typer.echo(f"  ✓ Objective already set: {original_intent.objective}")
+
+        if not original_intent.action:
+            action = fuzzy_select(
+                "What action are you doing?",
+                nicer([x for x in ws.plans.get_actions(date)]),
+                escapable=True
+            )
+            if action:
+                updated_fields['action'] = action.value
+                typer.echo(f"  ✓ Set action: {action.value}")
+        else:
+            typer.echo(f"  ✓ Action already set: {original_intent.action}")
+
+        if not original_intent.subject:
+            subject = fuzzy_select(
+                "Who or what is this for or about?",
+                nicer([x for x in ws.plans.get_subjects(date)]),
+                escapable=True
+            )
+            if subject:
+                updated_fields['subject'] = subject.value
+                typer.echo(f"  ✓ Set subject: {subject.value}")
+        else:
+            typer.echo(f"  ✓ Subject already set: {original_intent.subject}")
+
+        # Check if any fields were actually updated
+        if not updated_fields:
+            typer.echo("\nNo fields were updated.")
+            return
+
+        # Create updated intent with new fields
+        updated_intent = Intent(
+            alias=original_intent.alias,
+            role=updated_fields.get('role', original_intent.role),
+            objective=updated_fields.get('objective', original_intent.objective),
+            action=updated_fields.get('action', original_intent.action),
+            subject=updated_fields.get('subject', original_intent.subject),
+            trackers=original_intent.trackers
+        )
+
+        # Ask about retroactive updates
+        typer.echo("\n" + "="*60)
+        logs_with_intent = ws.logs.find_logs_with_intent(original_intent.intent_id)
+
+        if logs_with_intent:
+            typer.echo(f"This intent is used in {len(logs_with_intent)} log file(s).")
+            typer.echo("Would you like to update past sessions with the new field values?")
+            typer.echo("")
+            apply_retroactive = typer.confirm("Apply changes retroactively?", default=True)
+        else:
+            typer.echo("This intent hasn't been used in any sessions yet.")
+            apply_retroactive = False
+
+        # Update the plan file
+        typer.echo("\nUpdating plan...")
+        ws.plans.update_intent_by_id(original_intent.intent_id, updated_intent)
+        typer.echo(f"✓ Updated intent in {Path(plan_file_path).name}")
+
+        # Apply retroactive updates if requested
+        if apply_retroactive:
+            typer.echo("\nUpdating log files...")
+            trackers = ws.plans.get_trackers(ws.today())
+            total_updated = ws.logs.update_intent_in_logs(
+                original_intent.intent_id,
+                updated_intent,
+                trackers
+            )
+            typer.echo(f"\n✓ Updated {total_updated} session(s) in {len(logs_with_intent)} log file(s)")
+
+        typer.echo("\nIntent completed successfully!")
+
+    except Exception as e:
+        typer.echo(f"Error completing intent: {e}", err=True)
         raise typer.Exit(1)
