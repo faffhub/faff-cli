@@ -2,7 +2,6 @@ import typer
 
 from typing import List, Optional
 
-from faff_cli import query
 from faff_cli.output import create_formatter
 from faff_cli.filtering import FilterConfig, apply_filters, apply_date_range
 
@@ -24,8 +23,6 @@ faff log
 faff log edit
 faff log refresh
 """
-
-app.add_typer(query.app, name="query")
 
 @app.command()
 def show(ctx: typer.Context, date: str = typer.Argument(None)):
@@ -127,11 +124,8 @@ def log_list(
             has_reflections = len(reflection_scores) > 0
             mean_reflection = (sum(reflection_scores) / len(reflection_scores)) if reflection_scores else None
 
-            # Format status based on output mode
-            if json_output or plain_output:
-                status_display = "closed" if is_closed else "unclosed"
-            else:
-                status_display = "✅" if is_closed else "⚠️ unclosed"
+            # Format status (no emojis)
+            status_display = "closed" if is_closed else "unclosed"
 
             log_data.append({
                 "date": str(log.date),
