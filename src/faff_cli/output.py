@@ -138,7 +138,7 @@ class OutputFormatter:
     def print_warning(self, message: str):
         """Print a warning message to stderr."""
         if not self.json_mode:
-            formatted = f"⚠️  {message}"
+            formatted = f"Warning: {message}" if not message.startswith("Warning:") else message
             if self.plain_mode:
                 print(formatted, file=sys.stderr)
             else:

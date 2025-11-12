@@ -264,3 +264,54 @@ def submit(ctx: typer.Context, audience_id: str, date: str = typer.Argument(None
     timesheet = ws.timesheets.get_timesheet(audience_id, resolved_date)
     if timesheet:
         ws.timesheets.submit(timesheet)
+
+@app.command()
+def rm(
+    ctx: typer.Context,
+    date: str = typer.Argument(None, help="Date of timesheet to delete (defaults to today)"),
+    audience_id: Optional[str] = typer.Option(None, "--audience", "-a", help="Specific audience to delete (defaults to all)"),
+):
+    """
+    Delete compiled timesheet(s) for a given date.
+
+    By default, deletes timesheets for all audiences. Use --audience to delete for a specific audience only.
+
+    Examples:
+        faff timesheet rm today
+        faff timesheet rm yesterday --audience element
+        faff timesheet rm 2025-01-15
+    """
+    ws: Workspace = ctx.obj
+    resolved_date = ws.parse_natural_date(date)
+
+    if audience_id:
+        # Delete for specific audience
+        try:
+            ws.timesheets.delete_timesheet(audience_id, resolved_date)
+            typer.echo(f"Deleted timesheet for {audience_id} on {resolved_date}")
+        except Exception as e:
+            typer.echo(f"Error: {e}", err=True)
+            raise typer.Exit(1)
+    else:
+        # Delete for all audiences
+        audiences = ws.timesheets.audiences()
+        deleted_count = 0
+        errors = []
+
+        for audience in audiences:
+            try:
+                ws.timesheets.delete_timesheet(audience.id, resolved_date)
+                deleted_count += 1
+                typer.echo(f"Deleted timesheet for {audience.id} on {resolved_date}")
+            except Exception as e:
+                # Only log error if it's not a "does not exist" error
+                if "does not exist" not in str(e):
+                    errors.append(f"{audience.id}: {e}")
+
+        if deleted_count == 0:
+            typer.echo(f"No timesheets found for {resolved_date}", err=True)
+            raise typer.Exit(1)
+        elif errors:
+            typer.echo(f"Deleted {deleted_count} timesheet(s), but encountered errors:", err=True)
+            for error in errors:
+                typer.echo(f"  - {error}", err=True)
