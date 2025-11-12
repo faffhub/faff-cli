@@ -14,6 +14,7 @@
 4. **Filter Everything** - All list commands support filtering
 5. **Clear Feedback** - Always confirm what happened
 6. **Fail Safely** - Confirm destructive operations
+7. **No Emojis** - Unicode symbols (✓, ×) are fine, but no color emojis (✅, ⚠️, ❌) as they break terminal layouts
 
 ---
 
@@ -101,7 +102,7 @@ $ faff intent list --json
 
 ### Rule: Universal Filter Syntax
 
-Based on `faff log query` (the gold standard), ALL list commands MUST support:
+Based on `faff session report` (the gold standard), ALL list commands MUST support:
 
 ```bash
 # Filter syntax
@@ -418,10 +419,13 @@ faff log edit [date]            # Edit specific log
 faff log rm <date>              # Remove specific log
 
 faff intent list [filters]       # List intents
-faff intent show <id>           # Show intent details
 faff intent edit <id>           # Edit intent
 faff intent derive <id>         # Create derived intent
 faff intent replace <old> <new> # Replace intent usage
+faff intent complete <id>       # Complete intent fields interactively
+
+faff session list [filters]      # List all individual sessions
+faff session report [filters]    # Aggregate sessions (grouped report)
 
 faff remote list                 # List remotes
 faff remote show <id>           # Show remote details
@@ -592,31 +596,31 @@ def show(
 
 **Examples:**
 
-#### `faff intent show <intent-id>`
+#### `faff plan show <source>`
 ```bash
-$ faff intent show local:i-20251104-abc
+$ faff plan show local
 
-[bold cyan]Intent: local:i-20251104-abc[/bold cyan]
+[bold cyan]Plan: local[/bold cyan]
+[dim]Valid from 2025-11-04 onwards[/dim]
+[dim]Intents: 3[/dim]
 
-[bold]Alias:[/bold] Customer Meeting
-[bold]Valid From:[/bold] 2025-11-04 →
+[[intent]]
+intent_id = "local:i-20251104-abc"
+alias = "Customer Meeting"
+role = "consultant"
+objective = "alignment"
+action = "facilitate"
+subject = "customer/acme"
+trackers = ["element:12345"]
 
-[bold]ROAST:[/bold]
-  Role:      consultant
-  Objective: alignment
-  Action:    facilitate
-  Subject:   customer/acme
-
-[bold]Trackers:[/bold]
-  - element:12345 (Customer X Support)
-
-[bold]Usage:[/bold]
-  15 sessions across 8 logs
-  First used: 2025-11-04
-  Last used:  2025-01-05
-
-[bold]Source Plan:[/bold]
-  local (2025-11-04.toml)
+[[intent]]
+intent_id = "local:i-20251104-def"
+alias = "Code Review"
+role = "engineer"
+objective = "quality"
+action = "review"
+subject = "codebase"
+trackers = ["github:456"]
 ```
 
 #### `faff log show <date>`
@@ -709,7 +713,7 @@ def query(
 
 **Example (existing gold standard):**
 ```bash
-$ faff log query objective~revenue --from 2025-01-01 --group objective
+$ faff session report objective~revenue --from 2025-01-01
 
 ┌──────────────────────────────────┬──────────┐
 │ Objective                        │ Duration │
