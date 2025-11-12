@@ -160,6 +160,70 @@ def show(
         raise typer.Exit(1)
 
 @app.command()
+def trackers(
+    ctx: typer.Context,
+    date: str = typer.Argument(None, help="Date to get trackers for (defaults to today)"),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+    plain_output: bool = typer.Option(False, "--plain", help="Output as plain text (no colors)"),
+):
+    """
+    List all available trackers from plans.
+
+    Shows all trackers defined in active plans, regardless of usage.
+
+    Examples:
+        faff plan trackers
+        faff plan trackers yesterday
+        faff plan trackers --json
+    """
+    try:
+        ws: Workspace = ctx.obj
+        resolved_date = ws.parse_natural_date(date)
+
+        # Get all trackers from plans
+        trackers_dict = ws.plans.get_trackers(resolved_date)
+
+        if json_output:
+            import json
+            typer.echo(json.dumps(trackers_dict, indent=2))
+        elif plain_output:
+            # TSV format: ID\tName
+            for tracker_id, name in sorted(trackers_dict.items()):
+                typer.echo(f"{tracker_id}\t{name}")
+        else:
+            # Rich formatted output
+            from faff_cli.output import create_formatter
+
+            tracker_data = [
+                {"id": tracker_id, "name": name}
+                for tracker_id, name in sorted(trackers_dict.items())
+            ]
+
+            formatter = create_formatter(json_output, plain_output)
+            columns = [
+                ("id", "ID", "cyan"),
+                ("name", "Name", "yellow"),
+            ]
+
+            formatter.print_table(
+                tracker_data,
+                columns,
+                title="Available Trackers",
+                total_label="tracker(s)" if tracker_data else None,
+            )
+
+            if not tracker_data:
+                typer.echo("No trackers found in active plans.")
+
+    except typer.Exit:
+        raise
+    except Exception as e:
+        typer.echo(f"Error listing trackers: {e}", err=True)
+        import traceback
+        traceback.print_exc()
+        raise typer.Exit(1)
+
+@app.command()
 def pull(ctx: typer.Context, remote_id: str = typer.Argument(None)):
     """
     Pull the plans from a given source.
