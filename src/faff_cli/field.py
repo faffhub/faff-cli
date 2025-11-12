@@ -72,19 +72,39 @@ def list(
 
         plural_field = PLURAL_MAP[field]
 
+        # Get all defined values from plans
+        today = ws.today()
+        if field == "role":
+            all_defined = set(ws.plans.get_roles(today))
+        elif field == "objective":
+            all_defined = set(ws.plans.get_objectives(today))
+        elif field == "action":
+            all_defined = set(ws.plans.get_actions(today))
+        elif field == "subject":
+            all_defined = set(ws.plans.get_subjects(today))
+        elif field == "tracker":
+            all_defined = set(ws.plans.get_trackers(today).keys())
+        else:
+            all_defined = set()
+
         # Get intent counts from plans via Rust
         intent_count = ws.plans.get_field_usage_stats(field)
 
         # Get session counts and log dates from logs via Rust
         session_count, log_dates_dict = ws.logs.get_field_usage_stats(field)
 
-        # Combine all unique values from both plans and logs
-        values = set(intent_count.keys()) | set(session_count.keys())
+        # Combine all values: defined in plans + used in intents/sessions
+        values = all_defined | set(intent_count.keys()) | set(session_count.keys())
 
         # Convert log_dates_dict values (lists of PyDate) to count of unique logs
         log_count = {}
         for value, dates in log_dates_dict.items():
             log_count[value] = len(dates)
+
+        # Get tracker names if listing trackers
+        tracker_names = {}
+        if field == "tracker":
+            tracker_names = ws.plans.get_trackers(ws.today())
 
         # Build field data list
         field_data = []
@@ -93,12 +113,18 @@ def list(
             sessions = session_count.get(value, 0)
             logs = log_count.get(value, 0)
 
-            field_data.append({
+            row = {
                 "value": value,
                 "intents": intents,
                 "sessions": sessions,
                 "logs": logs,
-            })
+            }
+
+            # Add name for trackers
+            if field == "tracker":
+                row["name"] = tracker_names.get(value, "")
+
+            field_data.append(row)
 
         # Apply filters
         if filters:
@@ -115,12 +141,21 @@ def list(
         formatter = create_formatter(json_output, plain_output)
 
         # Define columns for table output
-        columns = [
-            ("value", "Value", "cyan"),
-            ("intents", "Intents", "green"),
-            ("sessions", "Sessions", "green"),
-            ("logs", "Logs", "green"),
-        ]
+        if field == "tracker":
+            columns = [
+                ("value", "Value", "cyan"),
+                ("name", "Name", "yellow"),
+                ("intents", "Intents", "green"),
+                ("sessions", "Sessions", "green"),
+                ("logs", "Logs", "green"),
+            ]
+        else:
+            columns = [
+                ("value", "Value", "cyan"),
+                ("intents", "Intents", "green"),
+                ("sessions", "Sessions", "green"),
+                ("logs", "Logs", "green"),
+            ]
 
         # Output results
         formatter.print_table(
