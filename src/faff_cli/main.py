@@ -1,7 +1,7 @@
 import typer
 import humanize
 
-from faff_cli import log, id, plan, start, timesheet, intent, field, remote, plugin, reflect
+from faff_cli import log, id, plan, start, timesheet, intent, field, remote, plugin, reflect, session
 from faff_cli.utils import edit_file
 
 import faff_core
@@ -13,6 +13,7 @@ cli = typer.Typer()
 
 # Track your Time
 cli.add_typer(start.app, name="start", rich_help_panel="Track your Time")
+cli.add_typer(session.app, name="session", rich_help_panel="Track your Time")
 cli.add_typer(reflect.app, name="reflect", rich_help_panel="Track your Time")
 
 # Compile and Submit Timesheets
@@ -373,7 +374,7 @@ def status(ctx: typer.Context):
                     needs_compiling.append((log_date, total_hours, needs_compile_for_audiences))
 
         if has_unclosed:
-            typer.echo("⚠️  Logs with unclosed sessions (cannot compile):")
+            typer.echo("Logs with unclosed sessions (cannot compile):")
             for log_date, hours, audience_ids in has_unclosed:
                 typer.echo(f"  {log_date}: {hours:.2f}h (for {', '.join(audience_ids)})")
             typer.echo("  Run 'faff stop' to close the active session\n")
@@ -403,7 +404,7 @@ def status(ctx: typer.Context):
                 typer.echo(f"For {audience_id}:")
                 for ts in sorted(timesheets, key=lambda t: t.date):
                     hours = sum(s.duration.total_seconds() for s in ts.timeline) / 3600
-                    typer.echo(f"  ⚠️  {ts.date}: {hours:.2f}h (recompile needed)")
+                    typer.echo(f"  {ts.date}: {hours:.2f}h (recompile needed)")
             typer.echo(f"  Total: {len(stale)} stale timesheet(s)")
         else:
             typer.echo("All timesheets are up-to-date ✓")
@@ -415,7 +416,7 @@ def status(ctx: typer.Context):
         if failed:
             for ts in sorted(failed, key=lambda t: t.date):
                 hours = sum(s.duration.total_seconds() for s in ts.timeline) / 3600
-                typer.echo(f"❌ {ts.meta.audience_id} - {ts.date}: {hours:.2f}h")
+                typer.echo(f"FAILED: {ts.meta.audience_id} - {ts.date}: {hours:.2f}h")
                 if ts.meta.submission_error:
                     # Truncate long error messages
                     error = ts.meta.submission_error
