@@ -12,6 +12,7 @@ from faff_cli.utils import edit_file
 from faff_cli.output import create_formatter
 from faff_cli.filtering import FilterConfig, apply_filters
 from faff_cli.ui import fuzzy_select
+from faff_cli.ui.fuzzy_select import FuzzyItem
 from faff_cli.start import nicer, nicer_tracker
 
 from faff_core import Workspace, Filter
@@ -665,11 +666,11 @@ def complete(
 
             # Let user select which one to complete
             choices = [
-                {
-                    "name": f"{intent.alias} (missing: {', '.join([f for f in ['role', 'objective', 'action', 'subject'] if not getattr(intent, f)])})",
-                    "value": intent.intent_id,
-                    "decoration": intent.intent_id
-                }
+                FuzzyItem(
+                    name=f"{intent.alias} (missing: {', '.join([f for f in ['role', 'objective', 'action', 'subject'] if not getattr(intent, f)])})",
+                    value=intent.intent_id,
+                    decoration=intent.intent_id
+                )
                 for intent in incomplete_intents
             ]
 

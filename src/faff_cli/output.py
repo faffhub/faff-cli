@@ -9,7 +9,7 @@ Provides consistent output modes across all commands:
 
 import json
 import sys
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 from rich.console import Console
 from rich.table import Table
 
@@ -32,7 +32,7 @@ class OutputFormatter:
     def print_table(
         self,
         data: List[Dict[str, Any]],
-        columns: List[tuple[str, str, Optional[str]]],  # (key, title, style)
+        columns: Sequence[tuple[str, str, Optional[str]]],  # (key, title, style)
         title: Optional[str] = None,
         total_label: Optional[str] = None,
     ):
@@ -142,7 +142,10 @@ class OutputFormatter:
             if self.plain_mode:
                 print(formatted, file=sys.stderr)
             else:
-                self.console.print(f"[yellow]{formatted}[/yellow]", file=sys.stderr)
+                # Rich Console doesn't support file parameter, use stderr console
+                from rich.console import Console
+                stderr_console = Console(stderr=True)
+                stderr_console.print(f"[yellow]{formatted}[/yellow]")
 
     # Private methods
 
@@ -153,7 +156,7 @@ class OutputFormatter:
     def _print_rich_table(
         self,
         data: List[Dict[str, Any]],
-        columns: List[tuple[str, str, Optional[str]]],
+        columns: Sequence[tuple[str, str, Optional[str]]],
         title: Optional[str],
         total_label: Optional[str],
     ):
@@ -182,7 +185,7 @@ class OutputFormatter:
     def _print_plain_table(
         self,
         data: List[Dict[str, Any]],
-        columns: List[tuple[str, str, Optional[str]]],
+        columns: Sequence[tuple[str, str, Optional[str]]],
     ):
         """Print data as tab-separated plain text."""
         # Print header

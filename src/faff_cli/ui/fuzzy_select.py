@@ -12,7 +12,7 @@ from prompt_toolkit.styles import Style
 from prompt_toolkit.shortcuts import print_formatted_text
 from prompt_toolkit.formatted_text import HTML
 
-from typing import Union, Any, Optional, List
+from typing import Union, Any, Optional, List, Sequence
 from dataclasses import dataclass
 
 from pfzy import fzy_scorer
@@ -32,22 +32,22 @@ class FuzzyItem:
     decoration: Optional[str] = None
     is_new: bool = False
 
-def is_list_of_strs(items: List[Any]) -> bool:
+def is_list_of_strs(items: Sequence[Any]) -> bool:
     return all(isinstance(i, str) for i in items)
 
-def is_list_of_dicts(items: List[Any]) -> bool:
+def is_list_of_dicts(items: Sequence[Any]) -> bool:
     return all(isinstance(i, dict) and "name" in i and "value" in i for i in items)
 
-def is_list_of_dataclasses(items: List[Any]) -> bool:
+def is_list_of_dataclasses(items: Sequence[Any]) -> bool:
     return all(isinstance(i, FuzzyItem) for i in items)
 
-def normalize_to_fuzzyitems(items: List[Any]) -> List[FuzzyItem]:
+def normalize_to_fuzzyitems(items: Sequence[Any]) -> List[FuzzyItem]:
     if is_list_of_strs(items):
         return [FuzzyItem(name=i, value=i) for i in items]
     elif is_list_of_dicts(items):
         return [FuzzyItem(name=i["name"], value=i.get("value", i["name"]), decoration=i.get("decoration")) for i in items]
     elif is_list_of_dataclasses(items):
-        return items[:]
+        return list(items)
     else:
         raise TypeError("Expected list of str, dicts with name/value, or FuzzyItem instances")
 
@@ -56,7 +56,7 @@ def slugify_preserving_slashes(path: str, **kwargs) -> str:
     return "/".join(slugify(seg, **kwargs) for seg in segments)
 
 def fuzzy_select(prompt: str,
-                 choices: List[Union[str, FuzzyItem]],
+                 choices: Sequence[Union[str, FuzzyItem]],
                  create_new: bool = True,
                  max_fraction: float = 0.5,
                  escapable: bool = True,

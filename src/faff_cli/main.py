@@ -1,5 +1,6 @@
 import typer
 import humanize
+from typing import Any
 
 from faff_cli import log, id, plan, start, timesheet, intent, field, remote, plugin, reflect, session
 from faff_cli.utils import edit_file
@@ -394,7 +395,7 @@ def status(ctx: typer.Context):
 
         if stale:
             # Group by audience
-            by_audience = {}
+            by_audience: dict[str, list[Any]] = {}
             for ts in stale:
                 if ts.meta.audience_id not in by_audience:
                     by_audience[ts.meta.audience_id] = []
