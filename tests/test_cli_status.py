@@ -19,7 +19,7 @@ class TestStatusCommand:
         result = runner.invoke(cli, ["status"])
 
         assert result.exit_code == 0
-        assert "faff-core library version" in result.stdout
+        assert "faff-core version:" in result.stdout
 
     def test_status_shows_repo_location(self, temp_faff_dir, monkeypatch):
         """Should display repository location."""
@@ -28,7 +28,7 @@ class TestStatusCommand:
         result = runner.invoke(cli, ["status"])
 
         assert result.exit_code == 0
-        assert "Status for faff repo root at:" in result.stdout
+        assert "Ledger:" in result.stdout
 
     def test_status_shows_no_active_session(self, temp_faff_dir, monkeypatch):
         """Should indicate when not working on anything."""
@@ -60,7 +60,7 @@ class TestInitCommand:
         assert (tmp_path / ".faff").exists()
         assert (tmp_path / ".faff" / "logs").exists()
         assert (tmp_path / ".faff" / "plans").exists()
-        assert "Initialised faff repository" in result.stdout
+        assert "Initialized faff ledger" in result.stdout
 
     def test_init_fails_on_nonexistent_directory(self):
         """Should fail when target directory doesn't exist."""

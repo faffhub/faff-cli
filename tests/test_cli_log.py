@@ -52,7 +52,7 @@ class TestLogListCommand:
         result = runner.invoke(cli, ["log", "list"])
 
         assert result.exit_code == 0
-        assert "Private logs recorded" in result.stdout
+        assert "No logs found matching criteria." in result.stdout
 
     def test_log_list_with_entries(self, workspace_with_log, temp_faff_dir, monkeypatch):
         """Should list existing logs."""

@@ -118,14 +118,17 @@ name = "Main Project"
 
 
 @pytest.fixture
-def workspace_with_plan(workspace, temp_faff_dir, sample_plan_toml):
+def workspace_with_plan(temp_faff_dir, sample_plan_toml, monkeypatch):
     """
     Create a workspace with a sample plan already loaded.
     """
-    # Plan is valid from 2025-03-20 per sample_plan_toml
-    plan_file = temp_faff_dir / "plans" / "local-20250320.toml"
+    # Write plan file FIRST
+    plan_file = temp_faff_dir / "plans" / "local-20250101.toml"
     plan_file.write_text(sample_plan_toml)
-    return workspace
+
+    # Then create workspace so it picks up the plan
+    monkeypatch.chdir(temp_faff_dir.parent)
+    return Workspace()
 
 
 @pytest.fixture

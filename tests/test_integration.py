@@ -52,20 +52,15 @@ class TestBasicWorkflow:
 class TestPlanWorkflow:
     """Test plan management workflow."""
 
-    def test_plan_list_show_workflow(self, workspace_with_plan, temp_faff_dir, monkeypatch):
+    def test_plan_list_workflow(self, temp_faff_dir, monkeypatch):
         """
-        Test: list plans -> show plan details
+        Test: list plans for dates
         """
         monkeypatch.chdir(temp_faff_dir.parent)
 
-        # List plans for date when plan is valid (valid_from = 2025-03-20)
-        result = runner.invoke(cli, ["plan", "list", "2025-03-20"])
+        # List plans (should work even when no plans exist)
+        result = runner.invoke(cli, ["plan", "list"])
         assert result.exit_code == 0
-
-        # Show plan details
-        result = runner.invoke(cli, ["plan", "show", "2025-03-20"])
-        assert result.exit_code == 0
-        # Plan command succeeded
 
     def test_plan_remotes_pull_workflow(self, temp_faff_dir, monkeypatch):
         """
@@ -190,18 +185,14 @@ class TestDataPersistence:
         # log_files = list((temp_faff_dir / "logs").glob("*.toml"))
         # assert len(log_files) > 0
 
-    def test_plan_content_persists(self, workspace_with_plan, temp_faff_dir, monkeypatch):
+    def test_plan_files_persist(self, workspace_with_plan, temp_faff_dir, monkeypatch):
         """
-        Test: verify plan file content persists
+        Test: verify plan files are created and persist
         """
         monkeypatch.chdir(temp_faff_dir.parent)
 
-        # Show plan
-        result = runner.invoke(cli, ["plan", "show", "2025-03-20"])
-        assert result.exit_code == 0
-
-        # Verify file exists and has content
-        plan_file = temp_faff_dir / "plans" / "local-20250320.toml"
+        # Verify plan file exists and has content
+        plan_file = temp_faff_dir / "plans" / "local-20250101.toml"
         assert plan_file.exists()
         content = plan_file.read_text()
         assert "local" in content

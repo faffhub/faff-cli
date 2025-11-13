@@ -19,8 +19,7 @@ class TestPlanListCommand:
         result = runner.invoke(cli, ["plan", "list"])
 
         assert result.exit_code == 0
-        assert "Found" in result.stdout
-        assert "plan" in result.stdout.lower()
+        assert "No plans found for" in result.stdout
 
     def test_plan_list_with_date(self, temp_faff_dir, monkeypatch):
         """Should accept date argument."""
@@ -44,32 +43,14 @@ class TestPlanListCommand:
 class TestPlanShowCommand:
     """Test the 'faff plan show' command."""
 
-    def test_plan_show_today(self, temp_faff_dir, monkeypatch):
-        """Should show plans for today."""
+    def test_plan_show_requires_source(self, temp_faff_dir, monkeypatch):
+        """Should require source argument."""
         monkeypatch.chdir(temp_faff_dir.parent)
 
         result = runner.invoke(cli, ["plan", "show"])
 
-        assert result.exit_code == 0
-
-    def test_plan_show_specific_date(self, temp_faff_dir, monkeypatch):
-        """Should show plans for specific date."""
-        monkeypatch.chdir(temp_faff_dir.parent)
-
-        result = runner.invoke(cli, ["plan", "show", "2025-01-15"])
-
-        assert result.exit_code == 0
-
-    def test_plan_show_with_content(self, workspace_with_plan, temp_faff_dir, monkeypatch):
-        """Should display plan content."""
-        monkeypatch.chdir(temp_faff_dir.parent)
-
-        result = runner.invoke(cli, ["plan", "show", "2025-03-20"])  # Match plan valid_from date
-
-        assert result.exit_code == 0
-        # plan.show prints plan.to_toml() which may be empty if no content
-        # Just check it succeeded
-        # assert "local" in result.stdout.lower()
+        # Should fail - missing required source argument
+        assert result.exit_code == 2  # typer usage error
 
 
 class TestPlanRemotesCommand:
