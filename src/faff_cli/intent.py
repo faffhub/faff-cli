@@ -13,7 +13,7 @@ from faff_cli.output import create_formatter
 from faff_cli.filtering import FilterConfig, apply_filters
 from faff_cli.ui import fuzzy_select
 from faff_cli.ui.fuzzy_select import FuzzyItem
-from faff_cli.start import nicer, nicer_tracker
+from faff_cli.start import nicer
 
 from faff_core import Workspace, Filter
 from faff_core.models import Intent
@@ -389,7 +389,7 @@ def replace(ctx: typer.Context, old_intent_id: str, new_intent_id: str):
         typer.echo(f"✓ Found new intent: {new_intent.alias} (from '{new_source}' plan)")
 
         # Find all sessions using the old intent
-        typer.echo(f"\nSearching for sessions using old intent...")
+        typer.echo("\nSearching for sessions using old intent...")
         logs_with_old = ws.logs.find_logs_with_intent(old_intent_id)
 
         if not logs_with_old:
@@ -427,7 +427,8 @@ def replace(ctx: typer.Context, old_intent_id: str, new_intent_id: str):
         typer.echo(f"\nAll sessions now use: {new_intent.alias} ({new_intent_id})")
 
         if old_result:
-            typer.echo(f"\nNote: Old intent remains in '{old_source}' plan but is no longer used.")
+            old_source_name, _, _ = old_result
+            typer.echo(f"\nNote: Old intent remains in '{old_source_name}' plan but is no longer used.")
             typer.echo("You may want to remove it manually if it's no longer needed.")
 
     except Exception as e:
@@ -541,7 +542,7 @@ def edit(ctx: typer.Context, intent_id: str):
 
         # Check if it's a local intent (can edit) by checking the ID prefix
         if not original_intent.intent_id.startswith("local:"):
-            typer.echo(f"\nError: This intent is from a remote source.")
+            typer.echo("\nError: This intent is from a remote source.")
             typer.echo(f"Intent ID: {original_intent.intent_id}")
             typer.echo("Remote intents cannot be edited directly.")
             typer.echo("You can use 'faff intent derive' to create a local copy instead.")
@@ -656,10 +657,14 @@ def complete(
             # Show incomplete intents with missing fields highlighted
             for intent in incomplete_intents:
                 missing = []
-                if not intent.role: missing.append("role")
-                if not intent.objective: missing.append("objective")
-                if not intent.action: missing.append("action")
-                if not intent.subject: missing.append("subject")
+                if not intent.role:
+                    missing.append("role")
+                if not intent.objective:
+                    missing.append("objective")
+                if not intent.action:
+                    missing.append("action")
+                if not intent.subject:
+                    missing.append("subject")
 
                 typer.echo(f"  {intent.alias} ({intent.intent_id})")
                 typer.echo(f"    Missing: {', '.join(missing)}\n")
@@ -696,7 +701,7 @@ def complete(
 
         # Check if it's a local intent
         if not original_intent.intent_id.startswith("local:"):
-            typer.echo(f"\nError: This intent is from a remote source.")
+            typer.echo("\nError: This intent is from a remote source.")
             typer.echo(f"Intent ID: {original_intent.intent_id}")
             typer.echo("Remote intents cannot be edited.")
             typer.echo("Use 'faff intent derive' to create a local copy instead.")

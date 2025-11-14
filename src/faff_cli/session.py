@@ -2,7 +2,7 @@ import typer
 from typing import List, Optional
 from faff_core import Workspace, Filter, query_sessions
 from faff_cli.output import create_formatter
-from faff_cli.filtering import FilterConfig, apply_filters, apply_date_range
+from faff_cli.filtering import FilterConfig, apply_filters
 import datetime
 import humanize
 from rich.table import Table

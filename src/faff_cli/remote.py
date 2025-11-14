@@ -1,9 +1,8 @@
 import typer
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Sequence
 
 from rich.console import Console
-from rich.table import Table
 
 from faff_core import Workspace
 from faff_cli.output import create_formatter
@@ -97,7 +96,7 @@ def list_remotes(
         formatter = create_formatter(json_output, plain_output)
 
         # Define columns for table output
-        columns = [
+        columns: Sequence[tuple[str, str, Optional[str]]] = [
             ("id", "ID", "cyan"),
             ("plugin", "Plugin", "green"),
             ("config_file", "Config File", "dim"),

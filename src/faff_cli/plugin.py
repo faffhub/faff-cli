@@ -67,10 +67,10 @@ def install(
         # Check if there's a config template
         template_path = plugin_dir / "config.template.toml"
         if template_path.exists():
-            typer.echo(f"\nTo create a remote using this plugin, run:")
+            typer.echo("\nTo create a remote using this plugin, run:")
             typer.echo(f"  faff remote add <remote-id> {repo_name}")
         else:
-            typer.echo(f"\nWarning: No config.template.toml found. You'll need to create a config manually.")
+            typer.echo("\nWarning: No config.template.toml found. You'll need to create a config manually.")
 
     except subprocess.CalledProcessError as e:
         typer.echo(f"Error cloning repository: {e.stderr}", err=True)
@@ -168,7 +168,7 @@ def uninstall(
                 instances.append(config_file.stem)
 
     if instances:
-        typer.echo(f"Warning: The following instances use this plugin:")
+        typer.echo("Warning: The following instances use this plugin:")
         for instance in instances:
             typer.echo(f"  - {instance}")
 
@@ -183,5 +183,5 @@ def uninstall(
     typer.echo(f"✓ Uninstalled plugin '{plugin_name}'")
 
     if instances:
-        typer.echo(f"\nNote: Instance configs still exist in .faff/remotes/")
-        typer.echo(f"You may want to remove them manually.")
+        typer.echo("\nNote: Instance configs still exist in .faff/remotes/")
+        typer.echo("You may want to remove them manually.")

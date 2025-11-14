@@ -107,7 +107,6 @@ def start(
 ):
     """Start a new task or activity."""
     try:
-        import datetime
         ws: Workspace = ctx.obj
         date = ws.today()
 
@@ -173,7 +172,7 @@ def start(
             return
         if chosen_intent.is_new:
             intent = input_new_intent(chosen_intent.value, ws)
-        elif not chosen_intent.is_new:
+        else:
             intent = chosen_intent.value
 
         note = input("? Note (optional): ")

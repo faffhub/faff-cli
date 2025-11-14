@@ -1,6 +1,5 @@
 import typer
 import datetime
-import humanize
 from typing import List, Optional
 
 from faff_core import Workspace

@@ -1,5 +1,5 @@
 import typer
-from typing import List, Optional
+from typing import List, Optional, Sequence
 from rich.console import Console
 
 from faff_core import Workspace
@@ -141,6 +141,7 @@ def list(
         formatter = create_formatter(json_output, plain_output)
 
         # Define columns for table output
+        columns: Sequence[tuple[str, str, Optional[str]]]
         if field == "tracker":
             columns = [
                 ("value", "Value", "cyan"),
@@ -219,7 +220,7 @@ def replace(
         )
         console.print(f"[green]Updated {sessions_updated} session(s) across {logs_updated} log(s)[/green]")
 
-        console.print(f"\n[bold green]✓ Replacement complete[/bold green]")
+        console.print("\n[bold green]✓ Replacement complete[/bold green]")
 
     except Exception as e:
         typer.echo(f"Error replacing {field}: {e}", err=True)
