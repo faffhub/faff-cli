@@ -14,18 +14,17 @@ runner = CliRunner()
 class TestBasicWorkflow:
     """Test basic time tracking workflow."""
 
-    def test_init_status_workflow(self, tmp_path, monkeypatch):
+    def test_init_status_workflow(self, tmp_path):
         """
         Test: init a repo -> check status
         """
         # Initialize repository
-        result = runner.invoke(cli, ["init", str(tmp_path)])
+        result = runner.invoke(cli, ["init"], env={"FAFF_DIR": str(tmp_path)})
         assert result.exit_code == 0
         assert (tmp_path / ".faff").exists()
 
         # Check status in new repo
-        monkeypatch.chdir(tmp_path)
-        result = runner.invoke(cli, ["status"])
+        result = runner.invoke(cli, ["status"], env={"FAFF_DIR": str(tmp_path)})
         assert result.exit_code == 0
         assert "Not currently working on anything" in result.stdout
 
@@ -33,7 +32,7 @@ class TestBasicWorkflow:
         """
         Test: view log -> shows empty -> refresh log
         """
-        monkeypatch.chdir(temp_faff_dir.parent)
+        monkeypatch.setenv("FAFF_DIR", str(temp_faff_dir.parent))
 
         # View today's log
         result = runner.invoke(cli, ["log", "show"])
@@ -56,7 +55,7 @@ class TestPlanWorkflow:
         """
         Test: list plans for dates
         """
-        monkeypatch.chdir(temp_faff_dir.parent)
+        monkeypatch.setenv("FAFF_DIR", str(temp_faff_dir.parent))
 
         # List plans (should work even when no plans exist)
         result = runner.invoke(cli, ["plan", "list"])
@@ -66,7 +65,7 @@ class TestPlanWorkflow:
         """
         Test: list remotes -> pull from remote
         """
-        monkeypatch.chdir(temp_faff_dir.parent)
+        monkeypatch.setenv("FAFF_DIR", str(temp_faff_dir.parent))
 
         # List remotes
         result = runner.invoke(cli, ["plan", "remotes"])
@@ -85,7 +84,7 @@ class TestLogWorkflow:
         """
         Test: show log -> view summary
         """
-        monkeypatch.chdir(temp_faff_dir.parent)
+        monkeypatch.setenv("FAFF_DIR", str(temp_faff_dir.parent))
 
         # Show log
         result = runner.invoke(cli, ["log", "show"])
@@ -101,7 +100,7 @@ class TestLogWorkflow:
         """
         Test: list all logs -> show specific date
         """
-        monkeypatch.chdir(temp_faff_dir.parent)
+        monkeypatch.setenv("FAFF_DIR", str(temp_faff_dir.parent))
 
         # List all logs
         result = runner.invoke(cli, ["log", "list"])
@@ -115,7 +114,7 @@ class TestLogWorkflow:
         """
         Test: create logs for multiple dates
         """
-        monkeypatch.chdir(temp_faff_dir.parent)
+        monkeypatch.setenv("FAFF_DIR", str(temp_faff_dir.parent))
 
         dates = ["today", "yesterday"]  # Use natural dates that work
 
@@ -135,7 +134,7 @@ class TestErrorHandling:
 
     def test_invalid_date_format(self, temp_faff_dir, monkeypatch):
         """Should handle invalid date formats gracefully."""
-        monkeypatch.chdir(temp_faff_dir.parent)
+        monkeypatch.setenv("FAFF_DIR", str(temp_faff_dir.parent))
 
         # Try invalid date - behavior depends on implementation
         result = runner.invoke(cli, ["log", "show", "not-a-date"])
@@ -154,14 +153,13 @@ class TestErrorHandling:
         # Exact behavior depends on implementation
 
     def test_init_in_existing_repo(self, temp_faff_dir):
-        """Should handle initializing in existing repo."""
+        """Should fail when .faff already exists."""
         # temp_faff_dir already has .faff
-        parent = temp_faff_dir.parent
+        result = runner.invoke(cli, ["init"], env={"FAFF_DIR": str(temp_faff_dir.parent)})
 
-        result = runner.invoke(cli, ["init", str(parent)])
-
-        # Should either skip or warn
-        # Not asserting exit code as behavior may vary
+        # Should fail with error message
+        assert result.exit_code == 1
+        assert "already exists" in result.stdout
 
 
 class TestDataPersistence:
@@ -171,7 +169,7 @@ class TestDataPersistence:
         """
         Test: refresh log -> verify file exists on disk
         """
-        monkeypatch.chdir(temp_faff_dir.parent)
+        monkeypatch.setenv("FAFF_DIR", str(temp_faff_dir.parent))
 
         # workspace_with_log already has a log entry in memory
         # Refresh command will write it to disk
@@ -189,7 +187,7 @@ class TestDataPersistence:
         """
         Test: verify plan files are created and persist
         """
-        monkeypatch.chdir(temp_faff_dir.parent)
+        monkeypatch.setenv("FAFF_DIR", str(temp_faff_dir.parent))
 
         # Verify plan file exists and has content
         plan_file = temp_faff_dir / "plans" / "local-20250101.toml"

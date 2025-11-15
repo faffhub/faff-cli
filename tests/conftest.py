@@ -44,8 +44,8 @@ def workspace(temp_faff_dir, monkeypatch):
     """
     Create a Workspace instance pointed at the temp directory.
     """
-    # Change to the temp directory so Workspace can find .faff
-    monkeypatch.chdir(temp_faff_dir.parent)
+    # Set FAFF_DIR so Workspace uses the temp directory
+    monkeypatch.setenv("FAFF_DIR", str(temp_faff_dir.parent))
 
     # Create workspace
     ws = Workspace()
@@ -127,7 +127,7 @@ def workspace_with_plan(temp_faff_dir, sample_plan_toml, monkeypatch):
     plan_file.write_text(sample_plan_toml)
 
     # Then create workspace so it picks up the plan
-    monkeypatch.chdir(temp_faff_dir.parent)
+    monkeypatch.setenv("FAFF_DIR", str(temp_faff_dir.parent))
     return Workspace()
 
 

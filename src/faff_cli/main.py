@@ -39,31 +39,25 @@ def main(ctx: typer.Context):
         ctx.obj = Workspace()
 
 @cli.command(rich_help_panel="Ledger Setup")
-def init(
-    ctx: typer.Context,
-    target_dir_str: str = typer.Argument(..., help="Directory to initialize as a faff ledger"),
-    force: bool = typer.Option(False, "--force", help="Allow init inside a parent faff ledger"),
-):
+def init(ctx: typer.Context):
     """
     Initialize a new faff ledger.
 
-    Creates the directory structure and configuration needed for a faff ledger
-    in the specified directory.
+    Creates the directory structure and configuration needed for a faff ledger.
+
+    By default, faff creates a .faff directory at ~/.faff. You can override this
+    with the FAFF_DIR environment variable to put .faff anywhere (e.g., in an
+    Obsidian vault or synced folder).
 
     Examples:
-        faff init .
-        faff init ~/projects/my-ledger
-        faff init /path/to/ledger --force
+        faff init                                    # Creates ~/.faff
+        FAFF_DIR=~/Obsidian/vault faff init         # Creates ~/Obsidian/vault/.faff
+        FAFF_DIR=/custom/path faff init             # Creates /custom/path/.faff
     """
     # init doesn't need a workspace - ctx.obj will be None
-    target_dir = Path(target_dir_str)
-    if not target_dir.exists():
-        typer.echo(f"Error: Directory {target_dir} does not exist.", err=True)
-        raise typer.Exit(1)
-
     typer.echo("Initializing faff ledger...")
     try:
-        storage = FileSystemStorage.init_at(str(target_dir), force)
+        storage = FileSystemStorage.init_at(None, False)
         typer.echo(f"✓ Initialized faff ledger at {storage.root_dir()}.")
     except Exception as e:
         typer.echo(f"Error: Failed to initialize faff ledger: {e}", err=True)
