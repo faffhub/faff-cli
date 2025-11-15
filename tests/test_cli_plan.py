@@ -14,7 +14,7 @@ class TestPlanListCommand:
 
     def test_plan_list_no_plans(self, temp_faff_dir, monkeypatch):
         """Should handle no active plans."""
-        monkeypatch.setenv("FAFF_DIR", str(temp_faff_dir.parent))
+        monkeypatch.setenv("FAFF_DIR", str(temp_faff_dir))
 
         result = runner.invoke(cli, ["plan", "list"])
 
@@ -23,7 +23,7 @@ class TestPlanListCommand:
 
     def test_plan_list_with_date(self, temp_faff_dir, monkeypatch):
         """Should accept date argument."""
-        monkeypatch.setenv("FAFF_DIR", str(temp_faff_dir.parent))
+        monkeypatch.setenv("FAFF_DIR", str(temp_faff_dir))
 
         result = runner.invoke(cli, ["plan", "list", "2025-01-15"])
 
@@ -31,7 +31,7 @@ class TestPlanListCommand:
 
     def test_plan_list_with_plan_file(self, workspace_with_plan, temp_faff_dir, monkeypatch):
         """Should list existing plans."""
-        monkeypatch.setenv("FAFF_DIR", str(temp_faff_dir.parent))
+        monkeypatch.setenv("FAFF_DIR", str(temp_faff_dir))
 
         result = runner.invoke(cli, ["plan", "list", "2025-01-15"])
 
@@ -45,7 +45,7 @@ class TestPlanShowCommand:
 
     def test_plan_show_requires_source(self, temp_faff_dir, monkeypatch):
         """Should require source argument."""
-        monkeypatch.setenv("FAFF_DIR", str(temp_faff_dir.parent))
+        monkeypatch.setenv("FAFF_DIR", str(temp_faff_dir))
 
         result = runner.invoke(cli, ["plan", "show"])
 
@@ -58,7 +58,7 @@ class TestPlanRemotesCommand:
 
     def test_plan_remotes_lists_sources(self, temp_faff_dir, monkeypatch):
         """Should list configured plan remotes."""
-        monkeypatch.setenv("FAFF_DIR", str(temp_faff_dir.parent))
+        monkeypatch.setenv("FAFF_DIR", str(temp_faff_dir))
 
         result = runner.invoke(cli, ["plan", "remotes"])
 
@@ -72,7 +72,7 @@ class TestPlanPullCommand:
 
     def test_plan_pull_all_remotes(self, temp_faff_dir, monkeypatch):
         """Should pull from all remotes when no ID specified."""
-        monkeypatch.setenv("FAFF_DIR", str(temp_faff_dir.parent))
+        monkeypatch.setenv("FAFF_DIR", str(temp_faff_dir))
 
         result = runner.invoke(cli, ["plan", "pull"])
 
@@ -81,7 +81,7 @@ class TestPlanPullCommand:
 
     def test_plan_pull_specific_remote(self, temp_faff_dir, monkeypatch):
         """Should pull from specific remote by ID."""
-        monkeypatch.setenv("FAFF_DIR", str(temp_faff_dir.parent))
+        monkeypatch.setenv("FAFF_DIR", str(temp_faff_dir))
 
         # Try pulling from a remote that may not exist
         result = runner.invoke(cli, ["plan", "pull", "local"])
@@ -91,7 +91,7 @@ class TestPlanPullCommand:
 
     def test_plan_pull_invalid_remote(self, temp_faff_dir, monkeypatch):
         """Should fail gracefully for invalid remote ID."""
-        monkeypatch.setenv("FAFF_DIR", str(temp_faff_dir.parent))
+        monkeypatch.setenv("FAFF_DIR", str(temp_faff_dir))
 
         result = runner.invoke(cli, ["plan", "pull", "nonexistent-remote"])
 

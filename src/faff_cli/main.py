@@ -45,20 +45,19 @@ def init(ctx: typer.Context):
 
     Creates the directory structure and configuration needed for a faff ledger.
 
-    By default, faff creates a .faff directory at ~/.faff. You can override this
-    with the FAFF_DIR environment variable to put .faff anywhere (e.g., in an
-    Obsidian vault or synced folder).
+    By default, faff creates a hidden directory at ~/.faff. You can override this
+    with the FAFF_DIR environment variable to use a custom location directly.
 
     Examples:
-        faff init                                    # Creates ~/.faff
-        FAFF_DIR=~/Obsidian/vault faff init         # Creates ~/Obsidian/vault/.faff
-        FAFF_DIR=/custom/path faff init             # Creates /custom/path/.faff
+        faff init                                    # Creates ~/.faff/
+        FAFF_DIR=~/Obsidian/vault faff init         # Creates ~/Obsidian/vault/ (no hidden folder)
+        FAFF_DIR=~/ledger faff init                 # Creates ~/ledger/
     """
     # init doesn't need a workspace - ctx.obj will be None
     typer.echo("Initializing faff ledger...")
     try:
-        storage = FileSystemStorage.init_at(None, False)
-        typer.echo(f"✓ Initialized faff ledger at {storage.root_dir()}.")
+        storage = FileSystemStorage.init_at(None)
+        typer.echo(f"✓ Initialized faff ledger at {storage.base_dir()}.")
     except Exception as e:
         typer.echo(f"Error: Failed to initialize faff ledger: {e}", err=True)
         raise typer.Exit(1)
@@ -325,7 +324,7 @@ def status(ctx: typer.Context):
     """
     try:
         ws: Workspace = ctx.obj
-        typer.echo(f"Ledger: {ws.storage().root_dir()}")
+        typer.echo(f"Ledger: {ws.storage().base_dir()}")
         typer.echo(f"faff-core version: {faff_core.version()}\n")
 
         # Today's status

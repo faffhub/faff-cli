@@ -14,7 +14,7 @@ class TestStatusCommand:
 
     def test_status_shows_version(self, temp_faff_dir, monkeypatch):
         """Should display faff-core version."""
-        monkeypatch.setenv("FAFF_DIR", str(temp_faff_dir.parent))
+        monkeypatch.setenv("FAFF_DIR", str(temp_faff_dir))
 
         result = runner.invoke(cli, ["status"])
 
@@ -23,7 +23,7 @@ class TestStatusCommand:
 
     def test_status_shows_repo_location(self, temp_faff_dir, monkeypatch):
         """Should display repository location."""
-        monkeypatch.setenv("FAFF_DIR", str(temp_faff_dir.parent))
+        monkeypatch.setenv("FAFF_DIR", str(temp_faff_dir))
 
         result = runner.invoke(cli, ["status"])
 
@@ -32,7 +32,7 @@ class TestStatusCommand:
 
     def test_status_shows_no_active_session(self, temp_faff_dir, monkeypatch):
         """Should indicate when not working on anything."""
-        monkeypatch.setenv("FAFF_DIR", str(temp_faff_dir.parent))
+        monkeypatch.setenv("FAFF_DIR", str(temp_faff_dir))
 
         result = runner.invoke(cli, ["status"])
 
@@ -41,7 +41,7 @@ class TestStatusCommand:
 
     def test_status_shows_total_time(self, temp_faff_dir, monkeypatch):
         """Should display total recorded time for today."""
-        monkeypatch.setenv("FAFF_DIR", str(temp_faff_dir.parent))
+        monkeypatch.setenv("FAFF_DIR", str(temp_faff_dir))
 
         result = runner.invoke(cli, ["status"])
 
@@ -53,17 +53,17 @@ class TestInitCommand:
     """Test the 'faff init' command."""
 
     def test_init_creates_faff_directory(self, tmp_path):
-        """Should create .faff directory structure."""
+        """Should create faff directory structure."""
         result = runner.invoke(cli, ["init"], env={"FAFF_DIR": str(tmp_path)})
 
         assert result.exit_code == 0
-        assert (tmp_path / ".faff").exists()
-        assert (tmp_path / ".faff" / "logs").exists()
-        assert (tmp_path / ".faff" / "plans").exists()
+        assert (tmp_path / "logs").exists()
+        assert (tmp_path / "plans").exists()
+        assert (tmp_path / "config.toml").exists()
         assert "Initialized faff ledger" in result.stdout
 
     def test_init_fails_when_already_exists(self, tmp_path):
-        """Should fail when .faff already exists."""
+        """Should fail when ledger already initialized."""
         # Initialize once
         runner.invoke(cli, ["init"], env={"FAFF_DIR": str(tmp_path)})
 
@@ -71,7 +71,7 @@ class TestInitCommand:
         result = runner.invoke(cli, ["init"], env={"FAFF_DIR": str(tmp_path)})
 
         assert result.exit_code == 1
-        assert "already exists" in result.stdout
+        assert "already initialized" in result.stdout
 
 
 class TestConfigCommand:
@@ -79,7 +79,7 @@ class TestConfigCommand:
 
     def test_config_command_exists(self, temp_faff_dir, monkeypatch):
         """Should have a config command."""
-        monkeypatch.setenv("FAFF_DIR", str(temp_faff_dir.parent))
+        monkeypatch.setenv("FAFF_DIR", str(temp_faff_dir))
 
         # This will try to open an editor, which we can't test easily
         # Just verify the command exists and responds
