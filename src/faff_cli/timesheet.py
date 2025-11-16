@@ -152,15 +152,38 @@ def list_timesheets(
             else:
                 date_obj = ts.date
 
-            # Determine submission status
-            is_submitted = ts.meta.submitted_at is not None
+            # Determine submission status from actual submission_status field
+            submission_status = getattr(ts.meta, 'submission_status', None)
+            submission_error = getattr(ts.meta, 'submission_error', None)
+
+            # Map status
+            if submission_status == "success":
+                is_success = True
+                is_failed = False
+            elif submission_status == "failed":
+                is_success = False
+                is_failed = True
+            else:
+                # No status set - check if submitted_at exists (legacy behavior)
+                is_success = ts.meta.submitted_at is not None
+                is_failed = False
 
             # Format status based on output mode
             if json_output or plain_output:
-                status_display = "submitted" if is_submitted else "pending"
+                if is_failed:
+                    status_display = "failed"
+                elif is_success:
+                    status_display = "submitted"
+                else:
+                    status_display = "pending"
             else:
-                # Use colors in Rich mode without emojis (to avoid alignment issues)
-                status_display = "[green]submitted[/green]" if is_submitted else "[yellow]pending[/yellow]"
+                # Use colors in Rich mode
+                if is_failed:
+                    status_display = "[red]failed[/red]"
+                elif is_success:
+                    status_display = "[green]submitted[/green]"
+                else:
+                    status_display = "[yellow]pending[/yellow]"
 
             # Format timestamps
             if isinstance(ts.compiled, datetime.datetime):
@@ -168,7 +191,7 @@ def list_timesheets(
             else:
                 compiled_str = str(ts.compiled)
 
-            if is_submitted:
+            if is_success:
                 if isinstance(ts.meta.submitted_at, datetime.datetime):
                     submitted_str = ts.meta.submitted_at.strftime("%Y-%m-%d %H:%M:%S")
                 else:
