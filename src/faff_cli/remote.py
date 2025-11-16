@@ -127,6 +127,32 @@ def list_remotes(
         traceback.print_exc()
         raise typer.Exit(1)
 
+@app.command()
+def rm(
+    ctx: typer.Context,
+    remote_id: str = typer.Argument(..., help="ID of the remote to remove"),
+):
+    """
+    Remove a remote configuration by deleting its .toml file.
+    """
+    try:
+        ws: Workspace = ctx.obj
+        console = Console()
+
+        remotes_dir = Path(ws.storage().remotes_dir())
+        remote_file = remotes_dir / f"{remote_id}.toml"
+
+        if not remote_file.exists():
+            console.print(f"[red]Remote '{remote_id}' not found[/red]")
+            console.print(f"\nLooking for: {remote_file}")
+            raise typer.Exit(1)
+
+        remote_file.unlink()
+        console.print(f"[green]Removed remote '{remote_id}'[/green]")
+
+    except Exception as e:
+        typer.echo(f"Error removing remote: {e}", err=True)
+        raise typer.Exit(1)
 
 @app.command()
 def add(
