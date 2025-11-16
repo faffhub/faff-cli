@@ -138,6 +138,40 @@ def list_plugins(ctx: typer.Context):
             if instances:
                 typer.echo(f"    Instances: {', '.join(sorted(instances))}")
 
+@app.command()
+def update(
+    ctx: typer.Context,
+    plugin_name: str = typer.Argument(..., help="Name of the plugin to update")
+):
+    """
+    Update an installed plugin by pulling the latest changes from its GitHub repository.
+    """
+    ws: Workspace = ctx.obj
+
+    plugins_dir = Path(ws.storage().base_dir()) / "plugins"
+    plugin_dir = plugins_dir / plugin_name
+
+    if not plugin_dir.exists():
+        typer.echo(f"Plugin '{plugin_name}' is not installed.", err=True)
+        raise typer.Exit(1)
+
+    typer.echo(f"Updating plugin '{plugin_name}'...")
+
+    try:
+        # Pull the latest changes
+        result = subprocess.run(
+            ["git", "-C", str(plugin_dir), "pull"],
+            check=True,
+            capture_output=True,
+            text=True
+        )
+
+        typer.echo(result.stdout)
+        typer.echo(f"✓ Successfully updated plugin '{plugin_name}'")
+
+    except subprocess.CalledProcessError as e:
+        typer.echo(f"Error updating plugin: {e.stderr}", err=True)
+        raise typer.Exit(1)
 
 @app.command()
 def uninstall(
