@@ -147,7 +147,7 @@ def workspace_with_log(workspace, temp_faff_dir):
     )
 
     # Start and stop a session
-    workspace.logs.start_intent_now(intent, None)
+    workspace.logs.start_intent(intent)
     workspace.logs.stop_current_session()
 
     # Write the log file so it persists
