@@ -335,9 +335,9 @@ def status(ctx: typer.Context):
         if active_session:
             duration = ws.now() - active_session.start
             if active_session.note:
-                typer.echo(f"Working on {active_session.intent.alias} (\"{active_session.note}\") for {humanize.precisedelta(duration)}")
+                typer.echo(f"Working on {active_session.intent.alias} (\"{active_session.note}\") for {humanize.precisedelta(duration)} today.")
             else:
-                typer.echo(f"Working on {active_session.intent.alias} for {humanize.precisedelta(duration)}")
+                typer.echo(f"Working on {active_session.intent.alias} for {humanize.precisedelta(duration)} today.")
         else:
             typer.echo("Not currently working on anything.")
 
