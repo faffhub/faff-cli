@@ -6,7 +6,6 @@ from faff_cli.output import create_formatter
 from faff_cli.filtering import FilterConfig, apply_filters, apply_date_range
 
 from faff_core import Workspace
-from faff_core.models import Intent
 
 # Removed: PrivateLogFormatter (now using Rust formatter via log.to_log_file())
 from faff_cli.utils import edit_file
@@ -269,67 +268,31 @@ def summary(ctx: typer.Context, date: str = typer.Argument(None)):
     resolved_date: datetime.date = ws.parse_natural_date(date)
 
     log = ws.logs.get_log_or_create(resolved_date)
-
     trackers = ws.plans.get_trackers(log.date)
 
-    # Loop through the logs, total all the time allocated to each tracker and for each tracker source, and print a summary.
-    intent_tracker: Dict[Intent, datetime.timedelta] = {}
-    tracker_totals: Dict[str, datetime.timedelta] = {}
-    tracker_source_totals: Dict[str, datetime.timedelta] = {}
+    # Get summary from Rust core
+    stats = log.summary(ws.now())
 
-    # Track reflection score weighted by duration
-    weighted_score_seconds = 0.0
-    total_reflected_seconds = 0.0
+    # Format the summary (display logic stays in CLI)
+    output = f"Summary for {resolved_date.isoformat()}:\n"
+    output += f"\nTotal recorded time: {humanize.precisedelta(datetime.timedelta(minutes=stats['total_minutes']), minimum_unit='minutes')}\n"
 
-    for session in log.timeline:
-        # Calculate the duration of the session
-        if session.end is None:
-            end_time = datetime.datetime.now(tz=log.timezone)
-        else:
-            end_time = session.end
-        duration = end_time - session.start
-        duration_seconds = duration.total_seconds()
+    if stats['mean_reflection_score'] is not None:
+        output += f"Mean reflection score: {stats['mean_reflection_score']:.2f}/5\n"
 
-        if session.intent not in intent_tracker:
-            intent_tracker[session.intent] = datetime.timedelta()
+    output += "\nIntent Totals:\n"
+    for alias, minutes in stats['by_intent'].items():
+        output += f"- {alias}: {humanize.precisedelta(datetime.timedelta(minutes=minutes), minimum_unit='minutes')}\n"
 
-        intent_tracker[session.intent] += duration
+    output += "\nTracker Totals:\n"
+    for tracker, minutes in stats['by_tracker'].items():
+        output += f"- {tracker} - {trackers.get(tracker)}: {humanize.precisedelta(datetime.timedelta(minutes=minutes), minimum_unit='minutes')}\n"
 
-        # Calculate weighted reflection score
-        if session.reflection_score is not None:
-            weighted_score_seconds += session.reflection_score * duration_seconds
-            total_reflected_seconds += duration_seconds
+    output += "\nTracker Source Totals:\n"
+    for source, minutes in stats['by_tracker_source'].items():
+        output += f"- {source}: {humanize.precisedelta(datetime.timedelta(minutes=minutes), minimum_unit='minutes')}\n"
 
-        for tracker in session.intent.trackers:
-            if tracker not in tracker_totals:
-                tracker_totals[tracker] = datetime.timedelta()
-
-            tracker_source = tracker.split(":")[0] if ":" in tracker else ""
-            if tracker_source not in tracker_source_totals:
-                tracker_source_totals[tracker_source] = datetime.timedelta()
-
-            tracker_totals[tracker] += duration
-            tracker_source_totals[tracker_source] += duration
-
-    # Format the summary
-    summary = f"Summary for {resolved_date.isoformat()}:\n"
-    summary += f"\nTotal recorded time: {humanize.precisedelta(log.total_recorded_time(),minimum_unit='minutes')}\n"
-
-    # Add weighted mean reflection score if any sessions have been reflected
-    if total_reflected_seconds > 0:
-        mean_score = weighted_score_seconds / total_reflected_seconds
-        summary += f"Mean reflection score: {mean_score:.2f}/5\n"
-    summary += "\nIntent Totals:\n"
-    for intent, total in intent_tracker.items():
-        summary += f"- {intent.alias}: {humanize.precisedelta(total,minimum_unit='minutes')}\n"
-    summary += "\nTracker Totals:\n"
-    for tracker, total in tracker_totals.items():
-        summary += f"- {tracker} - {trackers.get(tracker)}: {humanize.precisedelta(total,minimum_unit='minutes')}\n"
-    summary += "\nTracker Source Totals:\n"
-    for source, total in tracker_source_totals.items():
-        summary += f"- {source}: {humanize.precisedelta(total,minimum_unit='minutes')}\n"
-
-    typer.echo(summary)
+    typer.echo(output)
 
 @app.command()
 def refresh(ctx: typer.Context, date: str = typer.Argument(None)):
