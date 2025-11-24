@@ -105,10 +105,9 @@ def list_sessions(
             for session in log.timeline:
                 # Calculate duration
                 if session.end is None:
-                    end_time = ws.now()
+                    duration = session.elapsed(ws.now())
                 else:
-                    end_time = session.end
-                duration = end_time - session.start
+                    duration = session.duration
 
                 session_data.append({
                     "date": str(log.date),

@@ -333,7 +333,7 @@ def status(ctx: typer.Context):
 
         active_session = log.active_session()
         if active_session:
-            duration = ws.now() - active_session.start
+            duration = active_session.elapsed(ws.now())
             if active_session.note:
                 typer.echo(f"Working on {active_session.intent.alias} (\"{active_session.note}\") for {humanize.precisedelta(duration)} today.")
             else:
