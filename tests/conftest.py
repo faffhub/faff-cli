@@ -151,7 +151,7 @@ def workspace_with_log(workspace, temp_faff_dir):
     workspace.logs.stop_current_session()
 
     # Write the log file so it persists
-    log = workspace.logs.get_log_or_create(today)
+    log = workspace.logs.get_log(today)
     trackers = workspace.plans.get_trackers(today)
     workspace.logs.write_log(log, trackers)
 

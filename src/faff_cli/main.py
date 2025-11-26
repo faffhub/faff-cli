@@ -151,7 +151,7 @@ def compile(
         if date:
             # Specific date provided - compile that date
             resolved_date = ws.parse_natural_date(date)
-            log = ws.logs.get_log_or_create(resolved_date)
+            log = ws.logs.get_log(resolved_date)
 
             # FIXME: This check should be in faff-core, not faff-cli
             # The compile_time_sheet method should refuse to compile logs with active sessions
@@ -328,7 +328,7 @@ def status(ctx: typer.Context):
         typer.echo(f"faff-core version: {faff_core.version()}\n")
 
         # Today's status
-        log = ws.logs.get_log_or_create(ws.today())
+        log = ws.logs.get_log(ws.today())
         typer.echo(f"Total recorded time for today: {humanize.precisedelta(log.total_recorded_time(),minimum_unit='minutes')}")
 
         active_session = log.active_session()
@@ -466,7 +466,7 @@ def stop(ctx: typer.Context):
         ws: Workspace = ctx.obj
 
         # Get the current log to see what we're stopping
-        log = ws.logs.get_log_or_create(ws.today())
+        log = ws.logs.get_log(ws.today())
         active = log.active_session()
 
         if not active:

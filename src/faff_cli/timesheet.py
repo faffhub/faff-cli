@@ -29,7 +29,7 @@ def compile(ctx: typer.Context, date: str = typer.Argument(None)):
     ws: Workspace = ctx.obj
     resolved_date = ws.parse_natural_date(date)
     
-    log = ws.logs.get_log_or_create(resolved_date)
+    log = ws.logs.get_log(resolved_date)
 
     audiences = ws.timesheets.audiences()
     for audience in audiences:

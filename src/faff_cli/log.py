@@ -33,7 +33,7 @@ def show(ctx: typer.Context, date: str = typer.Argument(None)):
         ws = ctx.obj
         resolved_date = ws.parse_natural_date(date)
 
-        log = ws.logs.get_log_or_create(resolved_date)
+        log = ws.logs.get_log(resolved_date)
         typer.echo(log.to_log_file(ws.plans.get_trackers(log.date)))
     except Exception as e:
         typer.echo(f"Error showing log: {e}", err=True)
@@ -239,7 +239,7 @@ def edit(ctx: typer.Context,
 
         # Process the log to ensure it's correctly formatted for reading
         if not skip_validation:
-            log = ws.logs.get_log_or_create(resolved_date)
+            log = ws.logs.get_log(resolved_date)
             trackers = ws.plans.get_trackers(resolved_date)
             ws.logs.write_log(log, trackers)
 
@@ -248,7 +248,7 @@ def edit(ctx: typer.Context,
 
             # Process the edited file again after editing
             if not skip_validation:
-                log = ws.logs.get_log_or_create(resolved_date)
+                log = ws.logs.get_log(resolved_date)
                 trackers = ws.plans.get_trackers(resolved_date)
                 ws.logs.write_log(log, trackers)
         else:
@@ -267,7 +267,7 @@ def summary(ctx: typer.Context, date: str = typer.Argument(None)):
     ws: Workspace = ctx.obj
     resolved_date: datetime.date = ws.parse_natural_date(date)
 
-    log = ws.logs.get_log_or_create(resolved_date)
+    log = ws.logs.get_log(resolved_date)
     trackers = ws.plans.get_trackers(log.date)
 
     # Get summary from Rust core
@@ -304,7 +304,7 @@ def refresh(ctx: typer.Context, date: str = typer.Argument(None)):
         ws = ctx.obj
         resolved_date = ws.parse_natural_date(date)
 
-        log = ws.logs.get_log_or_create(resolved_date)
+        log = ws.logs.get_log(resolved_date)
         trackers = ws.plans.get_trackers(resolved_date)
         ws.logs.write_log(log, trackers)
         typer.echo("Log refreshed.")

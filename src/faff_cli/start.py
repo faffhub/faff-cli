@@ -113,7 +113,7 @@ def start(
         # Determine start time
         if continue_from_last:
             # Get the last session's end time
-            log = ws.logs.get_log_or_create(date)
+            log = ws.logs.get_log(date)
             if not log.timeline:
                 typer.echo("No previous session found to continue from", err=True)
                 raise typer.Exit(1)

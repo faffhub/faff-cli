@@ -120,7 +120,7 @@ def test_my_feature(workspace, sample_intent):
     """Always use fixtures instead of manual setup."""
     # workspace and sample_intent are ready to use
     workspace.logs.start_intent_now(sample_intent, None)
-    assert workspace.logs.get_log_or_create(workspace.today()).active_session()
+    assert workspace.logs.get_log(workspace.today()).active_session()
 ```
 
 ### CLI Tests Use CliRunner
