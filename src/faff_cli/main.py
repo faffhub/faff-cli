@@ -2,7 +2,7 @@ import typer
 import humanize
 from typing import Any
 
-from faff_cli import log, id, plan, start, timesheet, intent, field, remote, plugin, reflect, session
+from faff_cli import log, id, plan, start, timesheet, intent, field, remote, plugin, reflect, session, sql
 from faff_cli.utils import edit_file
 
 import faff_core
@@ -448,8 +448,9 @@ def status(ctx: typer.Context):
         typer.echo(f"Error getting status: {e}", err=True)
         raise typer.Exit(1)
 
-# Register log after status
+# Register log and sql after status
 cli.add_typer(log.app, name="log", rich_help_panel="Track your Time")
+cli.add_typer(sql.app, name="sql", rich_help_panel="Track your Time")
 
 @cli.command(rich_help_panel="Track your Time")
 def stop(ctx: typer.Context):
