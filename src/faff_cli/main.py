@@ -2,7 +2,7 @@ import typer
 import humanize
 from typing import Any
 
-from faff_cli import log, id, plan, start, timesheet, intent, field, remote, plugin, reflect, session, sql
+from faff_cli import log, id, plan, start, timesheet, intent, field, remote, plugin, reflect, session, sql, __version__
 from faff_cli.utils import edit_file
 
 import faff_core
@@ -30,8 +30,22 @@ cli.add_typer(remote.app, name="remote", rich_help_panel="Ledger Setup")
 cli.add_typer(id.app, name="id", rich_help_panel="Ledger Setup")
 cli.add_typer(plugin.app, name="plugin", rich_help_panel="Ledger Setup")
 
-@cli.callback()
-def main(ctx: typer.Context):
+@cli.callback(invoke_without_command=True)
+def main(
+    ctx: typer.Context,
+    version: bool = typer.Option(None, "--version", help="Show version and exit", is_flag=True),
+):
+    # Handle --version flag
+    if version:
+        typer.echo(f"faff-cli version: {__version__}")
+        typer.echo(f"faff-core version: {faff_core.version()}")
+        raise typer.Exit(0)
+
+    # If no command provided, show help
+    if ctx.invoked_subcommand is None:
+        typer.echo(ctx.get_help())
+        raise typer.Exit(0)
+
     # Don't create workspace for init command - it doesn't need one
     if ctx.invoked_subcommand == "init":
         ctx.obj = None
@@ -322,27 +336,33 @@ def status(ctx: typer.Context):
     Examples:
         faff status
     """
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.text import Text
+
     try:
         ws: Workspace = ctx.obj
-        typer.echo(f"Ledger: {ws.storage().base_dir()}")
-        typer.echo(f"faff-core version: {faff_core.version()}\n")
+        console = Console()
+
+        console.print(f"[dim]Ledger:[/dim] {ws.storage().base_dir()}\n")
 
         # Today's status
         log = ws.logs.get_log(ws.today())
-        typer.echo(f"Total recorded time for today: {humanize.precisedelta(log.total_recorded_time(),minimum_unit='minutes')}")
+        total_minutes = int(log.total_recorded_time().total_seconds() / 60)
+        console.print(f"[bold]Today:[/bold] {total_minutes} minutes recorded")
 
         active_session = log.active_session()
         if active_session:
-            duration = active_session.elapsed(ws.now())
+            duration_minutes = int(active_session.elapsed(ws.now()).total_seconds() / 60)
             if active_session.note:
-                typer.echo(f"Working on {active_session.intent.alias} (\"{active_session.note}\") for {humanize.precisedelta(duration)} today.")
+                console.print(f"[green]●[/green] {active_session.intent.alias} [dim]({active_session.note})[/dim] · {duration_minutes} minutes")
             else:
-                typer.echo(f"Working on {active_session.intent.alias} for {humanize.precisedelta(duration)} today.")
+                console.print(f"[green]●[/green] {active_session.intent.alias} · {duration_minutes} minutes")
         else:
-            typer.echo("Not currently working on anything.")
+            console.print("[dim]○ Not tracking anything[/dim]")
 
         # Check what needs compiling
-        typer.echo("\n--- Logs needing compilation ---")
+        console.print()
         log_dates = ws.logs.list_log_dates()
         existing_timesheets = ws.timesheets.list_timesheets()
         audiences = ws.timesheets.audiences()
@@ -367,82 +387,78 @@ def status(ctx: typer.Context):
                 else:
                     needs_compiling.append((log_date, total_hours, needs_compile_for_audiences))
 
-        if has_unclosed:
-            typer.echo("Logs with unclosed sessions (cannot compile):")
-            for log_date, hours, audience_ids in has_unclosed:
-                typer.echo(f"  {log_date}: {hours:.2f}h (for {', '.join(audience_ids)})")
-            typer.echo("  Run 'faff stop' to close the active session\n")
-
-        if needs_compiling:
-            typer.echo("Ready to compile:")
-            for log_date, hours, audience_ids in needs_compiling:
-                typer.echo(f"  {log_date}: {hours:.2f}h (for {', '.join(audience_ids)})")
-            total_to_compile = sum(hours for _, hours, _ in needs_compiling)
-            typer.echo(f"  Total: {len(needs_compiling)} log(s), {total_to_compile:.2f}h")
-        elif not has_unclosed:
-            typer.echo("All logs have compiled timesheets ✓")
+        if has_unclosed or needs_compiling:
+            console.print("[bold]Logs ready to compile[/bold]")
+            if has_unclosed:
+                console.print("[dim]Close these sessions first:[/dim]")
+                for log_date, hours, audience_ids in has_unclosed:
+                    console.print(f"  [red]✗[/red] {log_date} · {hours:.2f}h [dim](unclosed session)[/dim]")
+                console.print(f"[dim]Run:[/dim] [cyan]faff log edit {has_unclosed[0][0]}[/cyan]\n")
+            if needs_compiling:
+                console.print("[dim]Ready to compile:[/dim]")
+                for log_date, hours, audience_ids in needs_compiling:
+                    console.print(f"  [green]✓[/green] {log_date} · {hours:.2f}h [dim]→ {', '.join(audience_ids)}[/dim]")
+                total_to_compile = sum(hours for _, hours, _ in needs_compiling)
+                console.print(f"  [dim]{len(needs_compiling)} ready ({total_to_compile:.1f}h)[/dim]")
+                console.print(f"[dim]Run:[/dim] [cyan]faff compile[/cyan]")
+        else:
+            console.print("[dim]✓ All logs compiled[/dim]")
 
         # Check for stale timesheets (log changed after compilation)
-        typer.echo("\n--- Stale timesheets (log changed) ---")
+        console.print()
         stale = ws.timesheets.find_stale_timesheets()
 
         if stale:
-            # Group by audience
-            by_audience: dict[str, list[Any]] = {}
-            for ts in stale:
-                if ts.meta.audience_id not in by_audience:
-                    by_audience[ts.meta.audience_id] = []
-                by_audience[ts.meta.audience_id].append(ts)
+            # Split into submitted vs unsubmitted
+            stale_unsubmitted = [ts for ts in stale if ts.meta.submitted_at is None]
+            stale_submitted = [ts for ts in stale if ts.meta.submitted_at is not None]
 
-            for audience_id, timesheets in by_audience.items():
-                typer.echo(f"For {audience_id}:")
-                for ts in sorted(timesheets, key=lambda t: t.date):
+            if stale_unsubmitted:
+                console.print("[bold]Stale timesheets[/bold] [dim](Log changed, will recompile)[/dim]")
+                for ts in sorted(stale_unsubmitted, key=lambda t: t.date):
                     hours = sum(s.duration.total_seconds() for s in ts.timeline) / 3600
-                    typer.echo(f"  {ts.date}: {hours:.2f}h (recompile needed)")
-            typer.echo(f"  Total: {len(stale)} stale timesheet(s)")
-        else:
-            typer.echo("All timesheets are up-to-date ✓")
+                    console.print(f"  [magenta]↻[/magenta] {ts.date} · {hours:.2f}h [dim]({ts.meta.audience_id})[/dim]")
+                console.print(f"[dim]Run:[/dim] [cyan]faff compile[/cyan]\n")
 
-        # Check for failed submissions
-        typer.echo("\n--- Failed submissions ---")
+            if stale_submitted:
+                console.print("[bold]✗ Submitted timesheets are stale[/bold] [dim](Manual review needed)[/dim]")
+                for ts in sorted(stale_submitted, key=lambda t: t.date):
+                    hours = sum(s.duration.total_seconds() for s in ts.timeline) / 3600
+                    submitted = ts.meta.submitted_at.strftime("%Y-%m-%d")
+                    console.print(f"  [yellow]✗[/yellow] {ts.date} · {hours:.2f}h [dim]({ts.meta.audience_id}) submitted {submitted}[/dim]")
+
+        # Check what needs submission (never submitted OR failed)
+        console.print()
         failed = ws.timesheets.find_failed_submissions()
-
-        if failed:
-            for ts in sorted(failed, key=lambda t: t.date):
-                hours = sum(s.duration.total_seconds() for s in ts.timeline) / 3600
-                typer.echo(f"FAILED: {ts.meta.audience_id} - {ts.date}: {hours:.2f}h")
-                if ts.meta.submission_error:
-                    # Truncate long error messages
-                    error = ts.meta.submission_error
-                    if len(error) > 100:
-                        error = error[:97] + "..."
-                    typer.echo(f"   Error: {error}")
-            typer.echo(f"  Total: {len(failed)} failed submission(s)")
-        else:
-            typer.echo("No failed submissions ✓")
-
-        # Check what needs pushing
-        typer.echo("\n--- Timesheets needing submission ---")
         unsubmitted = [ts for ts in existing_timesheets if ts.meta.submitted_at is None]
+        needs_submission = unsubmitted + failed
 
-        if unsubmitted:
+        if needs_submission:
+            console.print("[bold]Submission[/bold]")
             # Group by audience
             by_audience = {}
-            for ts in unsubmitted:
+            for ts in needs_submission:
                 if ts.meta.audience_id not in by_audience:
                     by_audience[ts.meta.audience_id] = []
                 by_audience[ts.meta.audience_id].append(ts)
 
             for audience_id, timesheets in by_audience.items():
-                typer.echo(f"For {audience_id}:")
                 total_hours = 0
                 for ts in sorted(timesheets, key=lambda t: t.date):
                     hours = sum(s.duration.total_seconds() for s in ts.timeline) / 3600
                     total_hours += hours
-                    typer.echo(f"  {ts.date}: {hours:.2f}h")
-                typer.echo(f"  Total: {len(timesheets)} timesheet(s), {total_hours:.2f}h")
+                    if ts.meta.submission_error:
+                        error = ts.meta.submission_error
+                        # Truncate long error messages
+                        if len(error) > 60:
+                            error = error[:57] + "..."
+                        console.print(f"  [red]✗[/red] {ts.date} · {hours:.2f}h [dim]({audience_id})[/dim] [red]{error}[/red]")
+                    else:
+                        console.print(f"  [green]✓[/green] {ts.date} · {hours:.2f}h [dim]→ {audience_id}[/dim]")
+                console.print(f"  [dim]{len(timesheets)} timesheet(s), {total_hours:.1f}h[/dim]")
+            console.print(f"[dim]Run:[/dim] [cyan]faff push[/cyan]")
         else:
-            typer.echo("All timesheets have been submitted ✓")
+            console.print("[dim]✓ All timesheets submitted[/dim]")
 
     except Exception as e:
         typer.echo(f"Error getting status: {e}", err=True)
