@@ -90,13 +90,7 @@ def format_field(value: str) -> str:
 def display_intents_compact(intents: List[dict], console: Console) -> None:
     """Display intents in compact multi-line format."""
     for intent_info in intents:
-        # First line: ID alias (usage) valid dates
-        valid_str = str(intent_info["valid_from"])
-        if intent_info["valid_until"]:
-            valid_str += f" → {intent_info['valid_until']}"
-        else:
-            valid_str += " →"
-
+        # First line: ID alias (usage)
         # Escape intent_id and alias to prevent Rich from styling them
         intent_id_escaped = escape(intent_info['intent_id'] or "(no id)")
         alias_escaped = escape(intent_info['alias'] or "(no alias)")
@@ -109,8 +103,7 @@ def display_intents_compact(intents: List[dict], console: Console) -> None:
         console.print(
             f"[cyan]{intent_id_escaped}[/cyan]  "
             f"[yellow]{alias_escaped}[/yellow]  "
-            f"[dim]{usage_str}[/dim]  "
-            f"[dim]{valid_str}[/dim]"
+            f"[dim]{usage_str}[/dim]"
         )
 
         # Second line: As <role> I do <action> to achieve <objective> for <subject>
@@ -148,8 +141,8 @@ def display_intents_table(intents: List[dict], console: Console) -> None:
     table.add_column("Action")
     table.add_column("Subject")
     table.add_column("Trackers")
-    table.add_column("Valid From")
-    table.add_column("Valid Until")
+    table.add_column("Sessions")
+    table.add_column("Logs")
 
     for intent_info in intents:
         table.add_row(
@@ -160,8 +153,8 @@ def display_intents_table(intents: List[dict], console: Console) -> None:
             intent_info["action"],
             intent_info["subject"],
             intent_info["trackers"],
-            str(intent_info["valid_from"]),
-            intent_info["valid_until"] or "∞",
+            str(intent_info["session_count"]),
+            str(intent_info["log_count"]),
         )
 
     console.print(table)
@@ -188,6 +181,7 @@ def matches_filter(intent_info: dict, filter_obj: Filter) -> bool:
 @app.command(name="list")
 def ls(
     ctx: typer.Context,
+    date: Optional[str] = typer.Argument(None, help="Date to list intents for (defaults to today)"),
     filter_strings: List[str] = typer.Argument(
         None,
         help="Filters: field=value (exact), field~value (contains), field!=value (not equal)",
@@ -214,16 +208,16 @@ def ls(
     ),
 ):
     """
-    List intents from all plans.
+    List intents valid for a specific date.
 
     Shows usage statistics (session count, log count) and sorts by most used first.
 
-    Supported filter fields: intent_id, alias, role, objective, action, subject, trackers, source
+    Supported filter fields: intent_id, alias, role, objective, action, subject, trackers
 
     Examples:
         faff intent list
-        faff intent list alias~meeting
-        faff intent list role=engineer objective~revenue
+        faff intent list 2025-06-15
+        faff intent list yesterday alias~meeting
         faff intent list --table
         faff intent list --json
         faff intent list --limit 10
@@ -231,67 +225,51 @@ def ls(
     try:
         ws: Workspace = ctx.obj
 
+        # Parse date argument
+        if date:
+            target_date = ws.parse_natural_date(date)
+        else:
+            target_date = ws.today()
+
         # Parse filters using unified filtering
         filter_config = FilterConfig(filter_strings=filter_strings)
         filters, _, _ = filter_config.get_all(ws)
 
-        # Get all plan files
-        plan_dir = Path(ws.storage().plan_dir())
-        plan_files = sorted(plan_dir.glob("*.toml"))
+        # Get intents valid for the target date using the API
+        intents = ws.plans.get_intents(target_date)
 
-        # Collect all intents with their plan metadata
-        all_intents = []
-        for plan_file in plan_files:
-            try:
-                plan_data = toml.load(plan_file)
-                source = plan_data.get("source", "unknown")
-                valid_from = plan_data.get("valid_from", "unknown")
-                valid_until = plan_data.get("valid_until", "")
-
-                for intent_dict in plan_data.get("intents", []):
-                    # Handle incomplete intents gracefully
-                    intent_info = {
-                        "intent_id": intent_dict.get("intent_id") or "",
-                        "alias": intent_dict.get("alias") or "(no alias)",
-                        "role": intent_dict.get("role") or "",
-                        "objective": intent_dict.get("objective") or "",
-                        "action": intent_dict.get("action") or "",
-                        "subject": intent_dict.get("subject") or "",
-                        "trackers": ", ".join(intent_dict.get("trackers", [])) if intent_dict.get("trackers") else "",
-                        "source": source,
-                        "valid_from": str(valid_from),
-                        "valid_until": str(valid_until) if valid_until else "",
-                    }
-                    all_intents.append(intent_info)
-            except Exception:
-                continue
-
-        # Count sessions per intent ID across all logs
+        # Calculate usage statistics by reading all logs once
         from collections import defaultdict
-        session_count: dict[str, int] = defaultdict(int)
-        log_count: dict[str, set[str]] = defaultdict(set)
+        session_count = defaultdict(int)
+        log_count = defaultdict(set)
 
-        log_dir = Path(ws.storage().log_dir())
-        log_files = sorted(log_dir.glob("*.toml"))
+        for log in ws.logs.list_logs():
+            for session in log.timeline:
+                intent_id = session.intent.intent_id
+                session_count[intent_id] += 1
+                log_count[intent_id].add(log.date)
 
-        for log_file in log_files:
-            try:
-                log_data = toml.load(log_file)
-                log_date = log_file.stem
+        # Build intent info list with usage statistics
+        all_intents = []
+        for intent in intents:
+            # Extract source from intent_id (format: "source:i-YYYYMMDD-xxxxx")
+            source = intent.intent_id.split(":")[0] if ":" in intent.intent_id else "unknown"
 
-                for session in log_data.get("timeline", []):
-                    intent_id = session.get("intent_id")
-                    if intent_id:
-                        session_count[intent_id] += 1
-                        log_count[intent_id].add(log_date)
-            except Exception:
-                continue
-
-        # Add usage stats to each intent
-        for intent_info in all_intents:
-            intent_id = intent_info["intent_id"]
-            intent_info["session_count"] = session_count.get(intent_id, 0)
-            intent_info["log_count"] = len(log_count.get(intent_id, set()))
+            intent_info = {
+                "intent_id": intent.intent_id or "",
+                "alias": intent.alias or "(no alias)",
+                "role": intent.role or "",
+                "objective": intent.objective or "",
+                "action": intent.action or "",
+                "subject": intent.subject or "",
+                "trackers": ", ".join(intent.trackers) if intent.trackers else "",
+                "source": source,
+                "valid_from": str(target_date),  # Valid on the target date
+                "valid_until": "",  # Not showing end dates in this view
+                "session_count": session_count.get(intent.intent_id, 0),
+                "log_count": len(log_count.get(intent.intent_id, set())),
+            }
+            all_intents.append(intent_info)
 
         # Apply filters using unified filtering
         if filters:
