@@ -223,26 +223,3 @@ def trackers(
         traceback.print_exc()
         raise typer.Exit(1)
 
-@app.command()
-def pull(ctx: typer.Context, remote_id: str = typer.Argument(None)):
-    """
-    Pull the plans from a given source.
-    """
-    ws: Workspace = ctx.obj
-    remotes = ws.plans.remotes()
-
-    if remote_id:
-        remotes = [r for r in remotes if r.id == remote_id]
-        if len(remotes) == 0:
-            raise typer.BadParameter(f"Unknown source: {remote_id}")
-
-    for remote in remotes:
-        try:
-            plan = remote.pull_plan(ws.today())
-            if plan:
-                ws.plans.write_plan(plan)
-                typer.echo(f"Pulled plans from {remote.name}")
-            else:
-                typer.echo(f"No plans found for {remote.name}")
-        except Exception as e:
-            typer.echo(f"Error pulling plan from {remote.name}: {e}", err=True)

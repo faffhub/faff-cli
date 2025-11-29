@@ -1,14 +1,11 @@
 import typer
-import humanize
-from typing import Any
 
 from faff_cli import log, id, plan, start, timesheet, intent, field, remote, plugin, reflect, session, sql, __version__
 from faff_cli.utils import edit_file
 
 import faff_core
 from faff_core import Workspace, FileSystemStorage
-
-from pathlib import Path
+from faff_core.plugins import PlanSource
 
 cli = typer.Typer()
 
@@ -96,7 +93,7 @@ def config(ctx: typer.Context):
 @cli.command(rich_help_panel="Track your Time")
 def pull(
     ctx: typer.Context,
-    remote: str = typer.Argument(None, help="Remote to pull from (omit for all)"),
+    remote_id: str = typer.Argument(None, help="Remote to pull from (omit for all)"),
 ):
     """
     Pull plans from remote sources.
@@ -113,25 +110,32 @@ def pull(
         ws: Workspace = ctx.obj
         remotes = ws.plans.remotes()
 
-        if remote:
-            remotes = [r for r in remotes if r.id == remote]
+        if remote_id:
+            remotes = [r for r in remotes if r.id == remote_id]
             if len(remotes) == 0:
-                typer.echo(f"Unknown remote: {remote}", err=True)
+                typer.echo(f"Unknown remote: {remote_id}", err=True)
                 raise typer.Exit(1)
 
-        for r in remotes:
+        for remote_plugin in remotes:
+            # Only pull from plan sources, not audiences
+            if not isinstance(remote_plugin, PlanSource):
+                continue
+
             try:
-                plan = r.pull_plan(ws.today())
+                plan = remote_plugin.pull_plan(ws.today())
                 if plan:
                     ws.plans.write_plan(plan)
-                    typer.echo(f"Pulled plan from {r.id}")
+                    typer.echo(f"Pulled plan from {remote_plugin.id}")
                 else:
-                    typer.echo(f"No plans found for {r.id}")
+                    typer.echo(f"No plans found for {remote_plugin.id}")
             except Exception as e:
-                typer.echo(f"Error pulling plan from {r.id}: {e}", err=True)
+                typer.echo(f"Error pulling plan from {remote_plugin.id}: {e}", err=True)
+    except typer.Exit:
+        raise
     except Exception as e:
         typer.echo(f"Error pulling plans: {e}", err=True)
         raise typer.Exit(1)
+
 
 @cli.command(rich_help_panel="Compile and Submit Timesheets")
 def compile(
