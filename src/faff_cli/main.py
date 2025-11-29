@@ -388,19 +388,18 @@ def status(ctx: typer.Context):
                     needs_compiling.append((log_date, total_hours, needs_compile_for_audiences))
 
         if has_unclosed or needs_compiling:
-            console.print("[bold]Logs ready to compile[/bold]")
+            console.print("[bold]Logs to compile[/bold]")
             if has_unclosed:
                 console.print("[dim]Close these sessions first:[/dim]")
                 for log_date, hours, audience_ids in has_unclosed:
                     console.print(f"  [red]✗[/red] {log_date} · {hours:.2f}h [dim](unclosed session)[/dim]")
                 console.print(f"[dim]Run:[/dim] [cyan]faff log edit {has_unclosed[0][0]}[/cyan]\n")
             if needs_compiling:
-                console.print("[dim]Ready to compile:[/dim]")
+                console.print("[dim]Ready to compile (run: [cyan]faff compile[/cyan]):[/dim]")
                 for log_date, hours, audience_ids in needs_compiling:
                     console.print(f"  [green]✓[/green] {log_date} · {hours:.2f}h [dim]→ {', '.join(audience_ids)}[/dim]")
                 total_to_compile = sum(hours for _, hours, _ in needs_compiling)
                 console.print(f"  [dim]{len(needs_compiling)} ready ({total_to_compile:.1f}h)[/dim]")
-                console.print(f"[dim]Run:[/dim] [cyan]faff compile[/cyan]")
         else:
             console.print("[dim]✓ All logs compiled[/dim]")
 
