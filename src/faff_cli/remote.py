@@ -14,15 +14,6 @@ app = typer.Typer(help="Manage remote plan sources.")
 @app.command(name="list")
 def list_remotes(
     ctx: typer.Context,
-    filter_strings: List[str] = typer.Argument(
-        None,
-        help="Filters: field=value (exact), field~value (contains), field!=value (not equal)",
-    ),
-    limit: Optional[int] = typer.Option(
-        None,
-        "--limit", "-n",
-        help="Limit number of results",
-    ),
     json_output: bool = typer.Option(
         False,
         "--json",
@@ -49,48 +40,20 @@ def list_remotes(
     try:
         ws: Workspace = ctx.obj
 
-        # Parse filters using Python-side parsing
-        filters = []
-        if filter_strings:
-            try:
-                filters = parse_simple_filters(filter_strings)
-            except ValueError as e:
-                typer.echo(f"Error: {e}", err=True)
-                raise typer.Exit(1)
-
-        remotes_dir = Path(ws.storage().remotes_dir())
-        remote_files = list(remotes_dir.glob("*.toml"))
+        # Get remote configs using the API
+        remote_configs = ws.plugins.get_remote_configs()
 
         # Build remote data list
         remote_data = []
-        import toml
-
-        for remote_file in sorted(remote_files):
-            try:
-                data = toml.load(remote_file)
-                remote_id = data.get("id", remote_file.stem)
-                plugin = data.get("plugin", "unknown")
-
-                remote_data.append({
-                    "id": remote_id,
-                    "plugin": plugin,
-                    "config_file": remote_file.name,
-                })
-            except Exception as e:
-                # In non-JSON mode, show warnings
-                if not json_output:
-                    typer.echo(f"Warning: Failed to read {remote_file.name}: {e}", err=True)
-
-        # Apply filters
-        if filters:
-            remote_data = apply_filters(remote_data, filters)
+        for config in remote_configs:
+            remote_data.append({
+                "id": config["id"],
+                "plugin": config["plugin"],
+                "config_file": f"{config['id']}.toml",
+            })
 
         # Sort by ID (alphabetically)
         remote_data.sort(key=lambda x: x["id"])
-
-        # Apply limit
-        if limit:
-            remote_data = remote_data[:limit]
 
         # Create output formatter
         formatter = create_formatter(json_output, plain_output)
@@ -107,17 +70,14 @@ def list_remotes(
             remote_data,
             columns,
             title="Configured Remotes",
-            total_label="remotes" if remote_data else None,
         )
 
         if not remote_data:
             if not json_output:
                 formatter.print_message("No remotes found matching criteria.", "yellow")
+                remotes_dir = ws.storage().remotes_dir()
                 formatter.print_message(f"\nRemotes are configured in: {remotes_dir}", "")
                 formatter.print_message("Create a .toml file there to configure a remote.", "")
-        else:
-            if not json_output:
-                typer.echo(f"\nRemotes directory: {remotes_dir}")
 
     except typer.Exit:
         raise
@@ -251,21 +211,20 @@ def show(ctx: typer.Context, remote_id: str = typer.Argument(..., help="Remote I
         ws: Workspace = ctx.obj
         console = Console()
 
-        remotes_dir = Path(ws.storage().remotes_dir())
-        remote_file = remotes_dir / f"{remote_id}.toml"
+        # Get remote configs using the API
+        remote_configs = ws.plugins.get_remote_configs()
+        remote_data = next((config for config in remote_configs if config["id"] == remote_id), None)
 
-        if not remote_file.exists():
+        if not remote_data:
             console.print(f"[red]Remote '{remote_id}' not found[/red]")
-            console.print(f"\nLooking for: {remote_file}")
+            available = [config["id"] for config in remote_configs]
+            if available:
+                console.print(f"\nAvailable remotes: {', '.join(available)}")
             raise typer.Exit(1)
-
-        import toml
-
-        remote_data = toml.load(remote_file)
 
         console.print(f"[bold cyan]Remote: {remote_id}[/bold cyan]\n")
         console.print(f"[bold]Plugin:[/bold] {remote_data.get('plugin', 'unknown')}")
-        console.print(f"[bold]Config file:[/bold] {remote_file}\n")
+        console.print(f"[bold]Config file:[/bold] {remote_id}.toml\n")
 
         # Show connection config
         if "connection" in remote_data and remote_data["connection"]:

@@ -126,17 +126,11 @@ def list_plugins(ctx: typer.Context):
         typer.echo(f"    Location: {plugin_dir}")
 
         # Find instances (configs in remotes/ that use this plugin)
-        remotes_dir = Path(ws.storage().base_dir()) / "remotes"
-        if remotes_dir.exists():
-            instances = []
-            for config_file in remotes_dir.glob("*.toml"):
-                # Check if this config uses this plugin
-                content = config_file.read_text()
-                if f'plugin = "{plugin_name}"' in content:
-                    instances.append(config_file.stem)
+        remote_configs = ws.plugins.get_remote_configs()
+        instances = [config["id"] for config in remote_configs if config["plugin"] == plugin_name]
 
-            if instances:
-                typer.echo(f"    Instances: {', '.join(sorted(instances))}")
+        if instances:
+            typer.echo(f"    Instances: {', '.join(sorted(instances))}")
 
 @app.command()
 def update(
@@ -193,13 +187,8 @@ def uninstall(
         raise typer.Exit(1)
 
     # Check for instances
-    remotes_dir = Path(ws.storage().base_dir()) / "remotes"
-    instances = []
-    if remotes_dir.exists():
-        for config_file in remotes_dir.glob("*.toml"):
-            content = config_file.read_text()
-            if f'plugin = "{plugin_name}"' in content:
-                instances.append(config_file.stem)
+    remote_configs = ws.plugins.get_remote_configs()
+    instances = [config["id"] for config in remote_configs if config["plugin"] == plugin_name]
 
     if instances:
         typer.echo("Warning: The following instances use this plugin:")
