@@ -334,42 +334,83 @@ def status(ctx: typer.Context):
     """
     Show ledger status.
 
-    Displays current session, logs needing compilation, stale timesheets,
-    failed submissions, and timesheets ready to submit.
+    Displays the pull -> log -> compile -> push workflow status:
+    - Active plans and freshness
+    - Today's tracking summary
+    - Logs needing compilation
+    - Timesheets needing submission
 
     Examples:
         faff status
     """
     from rich.console import Console
-    from rich.panel import Panel
-    from rich.text import Text
 
     try:
         ws: Workspace = ctx.obj
-        console = Console()
+        console = Console(highlight=False)
 
-        console.print(f"[dim]Ledger:[/dim] {ws.storage().base_dir()}\n")
+        # 1. PULL - Show plan status and freshness
+        console.print("[bold]Plans:[/bold]")
 
-        # Today's status
+        plans = ws.plans.get_plans(ws.today())
+
+        # Check if plans are stale
+        stale_plans = [s for s, p in plans.items() if (ws.today() - p.valid_from).days > 7]
+        if stale_plans:
+            console.print(f"  [dim]Some plans are stale. Run[/dim] [cyan]faff pull[/cyan] [dim]to refresh:[/dim]")
+
+        if plans:
+            for source, plan in plans.items():
+                age_days = (ws.today() - plan.valid_from).days
+                if age_days == 0:
+                    freshness = "[green]today[/green]"
+                elif age_days == 1:
+                    freshness = "[yellow]yesterday[/yellow]"
+                elif age_days <= 7:
+                    freshness = f"[yellow]{age_days}d ago[/yellow]"
+                else:
+                    freshness = f"[red]{age_days}d ago[/red]"
+
+                intent_count = len(plan.intents)
+                console.print(f"  [cyan]{source}[/cyan] · {intent_count} intent(s) · pulled {freshness}")
+
+        else:
+            console.print("[yellow]  No plans available[/yellow]")
+            console.print(f"  [dim]Run[/dim] [cyan]faff pull[/cyan]")
+
+        console.print()
+
+        # 2. LOG - Today's tracking status
+        console.print("[bold]Today:[/bold]")
         log = ws.logs.get_log(ws.today())
-        total_minutes = int(log.total_recorded_time().total_seconds() / 60)
-        console.print(f"[bold]Today:[/bold] {total_minutes} minutes recorded")
+        total_seconds = log.total_recorded_time().total_seconds()
+        hours = int(total_seconds // 3600)
+        minutes = int((total_seconds % 3600) // 60)
+
+        if hours > 0:
+            console.print(f"  {hours}h {minutes}m tracked")
+        else:
+            console.print(f"  {minutes}m tracked")
 
         active_session = log.active_session()
         if active_session:
             duration_minutes = int(active_session.elapsed(ws.now()).total_seconds() / 60)
             if active_session.note:
-                console.print(f"[green]●[/green] {active_session.intent.alias} [dim]({active_session.note})[/dim] · {duration_minutes} minutes")
+                console.print(f"  [green]●[/green] {active_session.intent.alias} [dim]({active_session.note})[/dim] · {duration_minutes}m")
             else:
-                console.print(f"[green]●[/green] {active_session.intent.alias} · {duration_minutes} minutes")
+                console.print(f"  [green]●[/green] {active_session.intent.alias} · {duration_minutes}m")
         else:
-            console.print("[dim]○ Not tracking anything[/dim]")
+            console.print("  [dim]○ Not tracking[/dim]")
 
-        # Check what needs compiling
         console.print()
+
+        # 3. COMPILE - Check what needs compiling
+        console.print("[bold]Logs to Compile:[/bold]")
+        console.print(f"  [dim]Ready to Compile. Run[/dim] [cyan]faff compile[/cyan]:")
         log_dates = ws.logs.list_log_dates()
         existing_timesheets = ws.timesheets.list_timesheets()
         audiences = ws.timesheets.audiences()
+        stale = ws.timesheets.find_stale_timesheets()
 
         # Build a set of (audience_id, date) tuples for existing timesheets
         existing = {(ts.meta.audience_id, ts.date) for ts in existing_timesheets}
@@ -391,77 +432,80 @@ def status(ctx: typer.Context):
                 else:
                     needs_compiling.append((log_date, total_hours, needs_compile_for_audiences))
 
-        if has_unclosed or needs_compiling:
-            console.print("[bold]Logs to compile[/bold]")
-            if has_unclosed:
-                console.print("[dim]Close these sessions first:[/dim]")
-                for log_date, hours, audience_ids in has_unclosed:
-                    console.print(f"  [red]✗[/red] {log_date} · {hours:.2f}h [dim](unclosed session)[/dim]")
-                console.print(f"[dim]Run:[/dim] [cyan]faff log edit {has_unclosed[0][0]}[/cyan]\n")
+        # Only unsubmitted stale timesheets need recompilation
+        stale_unsubmitted = [ts for ts in stale if ts.meta.submitted_at is None]
+        stale_submitted = [ts for ts in stale if ts.meta.submitted_at is not None]
+
+        # Show ready to compile first
+        total_needing_compile = len(needs_compiling) + len(stale_unsubmitted)
+        if total_needing_compile > 0:
             if needs_compiling:
-                console.print("[dim]Ready to compile (run: [cyan]faff compile[/cyan]):[/dim]")
-                for log_date, hours, audience_ids in needs_compiling:
-                    console.print(f"  [green]✓[/green] {log_date} · {hours:.2f}h [dim]→ {', '.join(audience_ids)}[/dim]")
-                total_to_compile = sum(hours for _, hours, _ in needs_compiling)
-                console.print(f"  [dim]{len(needs_compiling)} ready ({total_to_compile:.1f}h)[/dim]")
-        else:
-            console.print("[dim]✓ All logs compiled[/dim]")
-
-        # Check for stale timesheets (log changed after compilation)
-        console.print()
-        stale = ws.timesheets.find_stale_timesheets()
-
-        if stale:
-            # Split into submitted vs unsubmitted
-            stale_unsubmitted = [ts for ts in stale if ts.meta.submitted_at is None]
-            stale_submitted = [ts for ts in stale if ts.meta.submitted_at is not None]
+                for log_date, hours, audience_ids in sorted(needs_compiling, key=lambda x: x[0]):
+                    console.print(f"  {log_date} · [cyan]{hours:>4.1f}h[/cyan] → {', '.join(audience_ids)}")
 
             if stale_unsubmitted:
-                console.print("[bold]Stale timesheets[/bold] [dim](Log changed, will recompile)[/dim]")
                 for ts in sorted(stale_unsubmitted, key=lambda t: t.date):
                     hours = sum(s.duration.total_seconds() for s in ts.timeline) / 3600
-                    console.print(f"  [magenta]↻[/magenta] {ts.date} · {hours:.2f}h [dim]({ts.meta.audience_id})[/dim]")
-                console.print(f"[dim]Run:[/dim] [cyan]faff compile[/cyan]\n")
+                    console.print(f"  {ts.date} · [cyan]{hours:>4.1f}h[/cyan] ({ts.meta.audience_id}) [yellow]stale[/yellow]")
 
+            total_hours = sum(h for _, h, _ in needs_compiling) + sum(sum(s.duration.total_seconds() for s in ts.timeline) / 3600 for ts in stale_unsubmitted)
+            console.print(f"  [dim]{total_needing_compile} log(s),[/dim] [cyan]{total_hours:.1f}h[/cyan] [dim]total[/dim]")
+
+        # Show blockers after (unclosed sessions)
+        if has_unclosed:
+            if total_needing_compile > 0:
+                console.print()
+            console.print("  [red]Blocked.[/red] [dim]Run[/dim] [cyan]faff stop[/cyan] [dim]or[/dim] [cyan]faff log edit <date>[/cyan][dim]:[/dim]")
+            for log_date, hours, audience_ids in has_unclosed:
+                console.print(f"  {log_date} · [cyan]{hours:>4.1f}h[/cyan]")
+
+        # If nothing to compile and no blockers
+        if total_needing_compile == 0 and not has_unclosed:
+            console.print("  [dim]✓ All logs compiled[/dim]")
+
+        console.print()
+
+        # 4. PUSH - Check what needs submission
+        console.print("[bold]Timesheets to Push:[/bold]")
+        failed = ws.timesheets.find_failed_submissions()
+        unsubmitted = [ts for ts in existing_timesheets if ts.meta.submitted_at is None]
+
+        # Exclude stale unsubmitted from the push list (they need recompiling first)
+        stale_dates = {(ts.meta.audience_id, ts.date) for ts in stale_unsubmitted}
+        unsubmitted_ready = [ts for ts in unsubmitted if (ts.meta.audience_id, ts.date) not in stale_dates]
+
+        # Show ready to push first
+        total_needing_push = len(unsubmitted_ready) + len(failed) + len(stale_submitted)
+        if total_needing_push > 0:
+            if unsubmitted_ready:
+                console.print(f"  [dim]Ready to Push. Run[/dim] [cyan]faff push[/cyan]:")
+                for ts in sorted(unsubmitted_ready, key=lambda t: t.date):
+                    hours = sum(s.duration.total_seconds() for s in ts.timeline) / 3600
+                    console.print(f"  {ts.date} · [cyan]{hours:>4.1f}h[/cyan] → {ts.meta.audience_id}")
+
+            # Show failed submissions
+            if failed:
+                if unsubmitted_ready:
+                    console.print()
+                console.print("  [red]Failed.[/red] [dim]Fix errors and run[/dim] [cyan]faff push[/cyan]:")
+                for ts in sorted(failed, key=lambda t: t.date):
+                    hours = sum(s.duration.total_seconds() for s in ts.timeline) / 3600
+                    error = ts.meta.submission_error
+                    if len(error) > 50:
+                        error = error[:47] + "..."
+                    console.print(f"  {ts.date} · [cyan]{hours:>4.1f}h[/cyan] → {ts.meta.audience_id} [red]{error}[/red]")
+
+            # Warn about submitted stale timesheets
             if stale_submitted:
-                console.print("[bold]✗ Submitted timesheets are stale[/bold] [dim](Manual review needed)[/dim]")
+                if unsubmitted_ready or failed:
+                    console.print()
+                console.print("  [yellow]Stale (already submitted).[/yellow] [dim]Manual review needed:[/dim]")
                 for ts in sorted(stale_submitted, key=lambda t: t.date):
                     hours = sum(s.duration.total_seconds() for s in ts.timeline) / 3600
                     submitted = ts.meta.submitted_at.strftime("%Y-%m-%d")
-                    console.print(f"  [yellow]✗[/yellow] {ts.date} · {hours:.2f}h [dim]({ts.meta.audience_id}) submitted {submitted}[/dim]")
-
-        # Check what needs submission (never submitted OR failed)
-        console.print()
-        failed = ws.timesheets.find_failed_submissions()
-        unsubmitted = [ts for ts in existing_timesheets if ts.meta.submitted_at is None]
-        needs_submission = unsubmitted + failed
-
-        if needs_submission:
-            console.print("[bold]Submission[/bold]")
-            # Group by audience
-            by_audience = {}
-            for ts in needs_submission:
-                if ts.meta.audience_id not in by_audience:
-                    by_audience[ts.meta.audience_id] = []
-                by_audience[ts.meta.audience_id].append(ts)
-
-            for audience_id, timesheets in by_audience.items():
-                total_hours = 0
-                for ts in sorted(timesheets, key=lambda t: t.date):
-                    hours = sum(s.duration.total_seconds() for s in ts.timeline) / 3600
-                    total_hours += hours
-                    if ts.meta.submission_error:
-                        error = ts.meta.submission_error
-                        # Truncate long error messages
-                        if len(error) > 60:
-                            error = error[:57] + "..."
-                        console.print(f"  [red]✗[/red] {ts.date} · {hours:.2f}h [dim]({audience_id})[/dim] [red]{error}[/red]")
-                    else:
-                        console.print(f"  [green]✓[/green] {ts.date} · {hours:.2f}h [dim]→ {audience_id}[/dim]")
-                console.print(f"  [dim]{len(timesheets)} timesheet(s), {total_hours:.1f}h[/dim]")
-            console.print(f"[dim]Run:[/dim] [cyan]faff push[/cyan]")
+                    console.print(f"  {ts.date} · [cyan]{hours:>4.1f}h[/cyan] ({ts.meta.audience_id}) [dim]submitted {submitted}[/dim]")
         else:
-            console.print("[dim]✓ All timesheets submitted[/dim]")
+            console.print("  [dim]✓ All timesheets submitted[/dim]")
 
     except Exception as e:
         typer.echo(f"Error getting status: {e}", err=True)
