@@ -68,15 +68,15 @@ class TestPlanRemotesCommand:
 
 
 class TestPlanPullCommand:
-    """Test the 'faff plan pull' command."""
+    """Test the 'faff pull' command (pulls plans from remotes)."""
 
     def test_plan_pull_all_remotes(self, temp_faff_dir, monkeypatch):
         """Should pull from all remotes when no ID specified."""
         monkeypatch.setenv("FAFF_DIR", str(temp_faff_dir))
 
-        result = runner.invoke(cli, ["plan", "pull"])
+        result = runner.invoke(cli, ["pull"])
 
-        # Should complete without error
+        # Should complete without error (even if no remotes configured)
         assert result.exit_code == 0
 
     def test_plan_pull_specific_remote(self, temp_faff_dir, monkeypatch):
@@ -84,7 +84,7 @@ class TestPlanPullCommand:
         monkeypatch.setenv("FAFF_DIR", str(temp_faff_dir))
 
         # Try pulling from a remote that may not exist
-        result = runner.invoke(cli, ["plan", "pull", "local"])
+        result = runner.invoke(cli, ["pull", "local"])
 
         # May fail if "local" remote doesn't exist, which is fine
         # assert result.exit_code == 0 or "No plans" in result.stdout or "Unknown" in result.stdout
@@ -93,7 +93,7 @@ class TestPlanPullCommand:
         """Should fail gracefully for invalid remote ID."""
         monkeypatch.setenv("FAFF_DIR", str(temp_faff_dir))
 
-        result = runner.invoke(cli, ["plan", "pull", "nonexistent-remote"])
+        result = runner.invoke(cli, ["pull", "nonexistent-remote"])
 
         # Should either exit with error or show helpful message
         assert result.exit_code != 0 or "Unknown" in result.stdout

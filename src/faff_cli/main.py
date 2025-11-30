@@ -30,7 +30,7 @@ cli.add_typer(plugin.app, name="plugin", rich_help_panel="Ledger Setup")
 @cli.callback(invoke_without_command=True)
 def main(
     ctx: typer.Context,
-    version: bool = typer.Option(None, "--version", help="Show version and exit", is_flag=True),
+    version: bool = typer.Option(False, "--version", help="Show version and exit"),
 ):
     # Handle --version flag
     if version:

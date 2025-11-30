@@ -12,41 +12,50 @@ runner = CliRunner()
 class TestStatusCommand:
     """Test the 'faff status' command."""
 
-    def test_status_shows_version(self, temp_faff_dir, monkeypatch):
-        """Should display faff-core version."""
+    def test_status_shows_plans_section(self, temp_faff_dir, monkeypatch):
+        """Should display Plans section."""
         monkeypatch.setenv("FAFF_DIR", str(temp_faff_dir))
 
         result = runner.invoke(cli, ["status"])
 
         assert result.exit_code == 0
-        assert "faff-core version:" in result.stdout
+        assert "Plans:" in result.stdout
 
-    def test_status_shows_repo_location(self, temp_faff_dir, monkeypatch):
-        """Should display repository location."""
+    def test_status_shows_today_section(self, temp_faff_dir, monkeypatch):
+        """Should display Today section with tracking info."""
         monkeypatch.setenv("FAFF_DIR", str(temp_faff_dir))
 
         result = runner.invoke(cli, ["status"])
 
         assert result.exit_code == 0
-        assert "Ledger:" in result.stdout
+        assert "Today:" in result.stdout
 
     def test_status_shows_no_active_session(self, temp_faff_dir, monkeypatch):
-        """Should indicate when not working on anything."""
+        """Should indicate when not tracking anything."""
         monkeypatch.setenv("FAFF_DIR", str(temp_faff_dir))
 
         result = runner.invoke(cli, ["status"])
 
         assert result.exit_code == 0
-        assert "Not currently working on anything" in result.stdout
+        assert "Not tracking" in result.stdout
 
-    def test_status_shows_total_time(self, temp_faff_dir, monkeypatch):
-        """Should display total recorded time for today."""
+    def test_status_shows_compile_section(self, temp_faff_dir, monkeypatch):
+        """Should display Logs to Compile section."""
         monkeypatch.setenv("FAFF_DIR", str(temp_faff_dir))
 
         result = runner.invoke(cli, ["status"])
 
         assert result.exit_code == 0
-        assert "Total recorded time for today" in result.stdout
+        assert "Logs to Compile:" in result.stdout
+
+    def test_status_shows_push_section(self, temp_faff_dir, monkeypatch):
+        """Should display Timesheets to Push section."""
+        monkeypatch.setenv("FAFF_DIR", str(temp_faff_dir))
+
+        result = runner.invoke(cli, ["status"])
+
+        assert result.exit_code == 0
+        assert "Timesheets to Push:" in result.stdout
 
 
 class TestInitCommand:
