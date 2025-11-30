@@ -27,7 +27,7 @@ class TestBasicWorkflow:
         # Check status in new repo
         result = runner.invoke(cli, ["status"], env={"FAFF_DIR": str(tmp_path)})
         assert result.exit_code == 0
-        assert "Not currently working on anything" in result.stdout
+        assert "Not tracking" in result.stdout
 
     def test_create_and_view_log_workflow(self, temp_faff_dir, monkeypatch):
         """
@@ -73,8 +73,8 @@ class TestPlanWorkflow:
         assert result.exit_code == 0
         assert "remote" in result.stdout.lower()
 
-        # Pull from remotes
-        result = runner.invoke(cli, ["plan", "pull"])
+        # Pull from remotes (now a top-level command)
+        result = runner.invoke(cli, ["pull"])
         assert result.exit_code == 0
 
 
