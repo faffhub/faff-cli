@@ -1,7 +1,7 @@
 # pyproject.toml (modern Python packaging using Poetry-style setup)
 [project]
 name = "faff-cli"
-version = "0.1.7"
+version = "0.1.8"
 description = "A local-first time tracking CLI with decentralized protocol aspirations."
 authors = [{name="Thomas Lant", email="thomas@lant.uk"}]
 license = { text = "AGPL-3.0-or-later" }
