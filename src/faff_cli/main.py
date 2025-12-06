@@ -4,7 +4,7 @@ from faff_cli import log, id, plan, start, timesheet, intent, field, remote, plu
 from faff_cli.utils import edit_file
 
 import faff_core
-from faff_core import Workspace, FileSystemStorage
+from faff_core import Workspace, FileSystemStorage, UninitializedLedgerError
 from faff_core.plugins import PlanSource
 
 cli = typer.Typer()
@@ -47,7 +47,15 @@ def main(
     if ctx.invoked_subcommand == "init":
         ctx.obj = None
     else:
-        ctx.obj = Workspace()
+        try:
+            ctx.obj = Workspace()
+        except UninitializedLedgerError:
+            typer.echo("Error: Faff ledger not found.\n", err=True)
+            typer.echo("Initialize a new ledger with:", err=True)
+            typer.echo("    faff init\n", err=True)
+            typer.echo("Or specify a custom location:", err=True)
+            typer.echo("    FAFF_DIR=~/my-ledger faff init", err=True)
+            raise typer.Exit(1)
 
 @cli.command(rich_help_panel="Ledger Setup")
 def init(ctx: typer.Context):

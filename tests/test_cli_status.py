@@ -82,6 +82,15 @@ class TestInitCommand:
         assert result.exit_code == 1
         assert "already initialized" in result.stdout
 
+    def test_command_without_init_shows_helpful_error(self, tmp_path):
+        """Should show helpful error when running command without initialization."""
+        # Try to run status without initializing
+        result = runner.invoke(cli, ["status"], env={"FAFF_DIR": str(tmp_path / "nonexistent")})
+
+        assert result.exit_code == 1
+        assert "Faff ledger not found" in result.stderr
+        assert "faff init" in result.stderr
+
 
 class TestConfigCommand:
     """Test the 'faff config' command."""
