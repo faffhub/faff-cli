@@ -571,12 +571,13 @@ def stop(ctx: typer.Context):
         # Calculate duration
         end_time = ws.now()
         duration = end_time - start_time
+        duration_minutes = int(duration.total_seconds() / 60)
 
         # Show feedback
         typer.echo(f"Stopped '{intent_alias}'")
-        typer.echo(f"  Started: {start_time.strftime('%H:%M:%S')}")
-        typer.echo(f"  Ended:   {end_time.strftime('%H:%M:%S')}")
-        typer.echo(f"  Duration: {humanize.precisedelta(duration, minimum_unit='seconds')}")
+        typer.echo(f"  Started: {start_time.strftime('%H:%M')}")
+        typer.echo(f"  Ended:   {end_time.strftime('%H:%M')}")
+        typer.echo(f"  Duration: {duration_minutes} minutes")
     except Exception as e:
         typer.echo(f"Error stopping session: {e}", err=True)
         raise typer.Exit(1)

@@ -216,7 +216,7 @@ def start(
 
         # Rust core handles validation (future time, overlaps) and auto-stops active session
         ws.logs.start_intent(intent, start_time, note if note else None)
-        typer.echo(f"Started '{intent.alias}' at {start_time.strftime('%H:%M:%S')}")
+        typer.echo(f"Started '{intent.alias}' at {start_time.strftime('%H:%M')}")
     except Exception as e:
         typer.echo(f"Error starting session: {e}", err=True)
         raise typer.Exit(1)
