@@ -118,17 +118,21 @@ def pull(
         ws: Workspace = ctx.obj
         remotes = ws.plans.remotes()
 
+        # Filter to only plan sources
+        plan_sources = [r for r in remotes if isinstance(r, PlanSource)]
+
+        if len(plan_sources) == 0:
+            typer.echo("No remote plan sources configured.\n", err=True)
+            typer.echo("Configure a remote plan source in your faff configuration.", err=True)
+            raise typer.Exit(1)
+
         if remote_id:
-            remotes = [r for r in remotes if r.id == remote_id]
-            if len(remotes) == 0:
+            plan_sources = [r for r in plan_sources if r.id == remote_id]
+            if len(plan_sources) == 0:
                 typer.echo(f"Unknown remote: {remote_id}", err=True)
                 raise typer.Exit(1)
 
-        for remote_plugin in remotes:
-            # Only pull from plan sources, not audiences
-            if not isinstance(remote_plugin, PlanSource):
-                continue
-
+        for remote_plugin in plan_sources:
             try:
                 plan = remote_plugin.pull_plan(ws.today())
                 if plan:
@@ -167,6 +171,11 @@ def compile(
     try:
         ws = ctx.obj
         audiences = ws.timesheets.audiences()
+
+        if len(audiences) == 0:
+            typer.echo("No audiences configured.\n", err=True)
+            typer.echo("Configure an audience in your faff configuration.", err=True)
+            raise typer.Exit(1)
 
         if audience:
             audiences = [a for a in audiences if a.id == audience]
@@ -300,11 +309,16 @@ def push(
     """
     try:
         ws: Workspace = ctx.obj
+        audiences = ws.timesheets.audiences()
+
+        if len(audiences) == 0:
+            typer.echo("No audiences configured.\n", err=True)
+            typer.echo("Configure an audience in your faff configuration.", err=True)
+            raise typer.Exit(1)
 
         if date:
             # Specific date provided - push that date
             resolved_date = ws.parse_natural_date(date)
-            audiences = ws.timesheets.audiences()
 
             if audience:
                 audiences = [a for a in audiences if a.id == audience]
@@ -412,108 +426,110 @@ def status(ctx: typer.Context):
 
         console.print()
 
-        # 3. COMPILE - Check what needs compiling
-        console.print("[bold]Logs to Compile:[/bold]")
-        console.print(f"  [dim]Ready to Compile. Run[/dim] [cyan]faff compile[/cyan]:")
-        log_dates = ws.logs.list_log_dates()
-        existing_timesheets = ws.timesheets.list_timesheets()
+        # 3. COMPILE - Check what needs compiling (only if audiences are configured)
         audiences = ws.timesheets.audiences()
-        stale = ws.timesheets.find_stale_timesheets()
 
-        # Build a set of (audience_id, date) tuples for existing timesheets
-        existing = {(ts.meta.audience_id, ts.date) for ts in existing_timesheets}
+        if audiences:
+            console.print("[bold]Logs to Compile:[/bold]")
+            console.print(f"  [dim]Ready to Compile. Run[/dim] [cyan]faff compile[/cyan]:")
+            log_dates = ws.logs.list_log_dates()
+            existing_timesheets = ws.timesheets.list_timesheets()
+            stale = ws.timesheets.find_stale_timesheets()
 
-        needs_compiling = []
-        has_unclosed = []
-        for log_date in log_dates:
-            log = ws.logs.get_log(log_date)
-            if not log:
-                continue
+            # Build a set of (audience_id, date) tuples for existing timesheets
+            existing = {(ts.meta.audience_id, ts.date) for ts in existing_timesheets}
 
-            # Check if this log needs compiling for any audience
-            needs_compile_for_audiences = [aud.id for aud in audiences if (aud.id, log_date) not in existing]
+            needs_compiling = []
+            has_unclosed = []
+            for log_date in log_dates:
+                log = ws.logs.get_log(log_date)
+                if not log:
+                    continue
 
-            if needs_compile_for_audiences:
-                total_hours = log.total_recorded_time().total_seconds() / 3600
-                if log.active_session():
-                    has_unclosed.append((log_date, total_hours, needs_compile_for_audiences))
-                else:
-                    needs_compiling.append((log_date, total_hours, needs_compile_for_audiences))
+                # Check if this log needs compiling for any audience
+                needs_compile_for_audiences = [aud.id for aud in audiences if (aud.id, log_date) not in existing]
 
-        # Only unsubmitted stale timesheets need recompilation
-        stale_unsubmitted = [ts for ts in stale if ts.meta.submitted_at is None]
-        stale_submitted = [ts for ts in stale if ts.meta.submitted_at is not None]
+                if needs_compile_for_audiences:
+                    total_hours = log.total_recorded_time().total_seconds() / 3600
+                    if log.active_session():
+                        has_unclosed.append((log_date, total_hours, needs_compile_for_audiences))
+                    else:
+                        needs_compiling.append((log_date, total_hours, needs_compile_for_audiences))
 
-        # Show ready to compile first
-        total_needing_compile = len(needs_compiling) + len(stale_unsubmitted)
-        if total_needing_compile > 0:
-            if needs_compiling:
-                for log_date, hours, audience_ids in sorted(needs_compiling, key=lambda x: x[0]):
-                    console.print(f"  {log_date} · [cyan]{hours:>4.1f}h[/cyan] → {', '.join(audience_ids)}")
+            # Only unsubmitted stale timesheets need recompilation
+            stale_unsubmitted = [ts for ts in stale if ts.meta.submitted_at is None]
+            stale_submitted = [ts for ts in stale if ts.meta.submitted_at is not None]
 
-            if stale_unsubmitted:
-                for ts in sorted(stale_unsubmitted, key=lambda t: t.date):
-                    hours = sum(s.duration.total_seconds() for s in ts.timeline) / 3600
-                    console.print(f"  {ts.date} · [cyan]{hours:>4.1f}h[/cyan] ({ts.meta.audience_id}) [yellow]stale[/yellow]")
-
-            total_hours = sum(h for _, h, _ in needs_compiling) + sum(sum(s.duration.total_seconds() for s in ts.timeline) / 3600 for ts in stale_unsubmitted)
-            console.print(f"  [dim]{total_needing_compile} log(s),[/dim] [cyan]{total_hours:.1f}h[/cyan] [dim]total[/dim]")
-
-        # Show blockers after (unclosed sessions)
-        if has_unclosed:
+            # Show ready to compile first
+            total_needing_compile = len(needs_compiling) + len(stale_unsubmitted)
             if total_needing_compile > 0:
-                console.print()
-            console.print("  [red]Blocked.[/red] [dim]Run[/dim] [cyan]faff stop[/cyan] [dim]or[/dim] [cyan]faff log edit <date>[/cyan][dim]:[/dim]")
-            for log_date, hours, audience_ids in has_unclosed:
-                console.print(f"  {log_date} · [cyan]{hours:>4.1f}h[/cyan]")
+                if needs_compiling:
+                    for log_date, hours, audience_ids in sorted(needs_compiling, key=lambda x: x[0]):
+                        console.print(f"  {log_date} · [cyan]{hours:>4.1f}h[/cyan] → {', '.join(audience_ids)}")
 
-        # If nothing to compile and no blockers
-        if total_needing_compile == 0 and not has_unclosed:
-            console.print("  [dim]✓ All logs compiled[/dim]")
+                if stale_unsubmitted:
+                    for ts in sorted(stale_unsubmitted, key=lambda t: t.date):
+                        hours = sum(s.duration.total_seconds() for s in ts.timeline) / 3600
+                        console.print(f"  {ts.date} · [cyan]{hours:>4.1f}h[/cyan] ({ts.meta.audience_id}) [yellow]stale[/yellow]")
 
-        console.print()
+                total_hours = sum(h for _, h, _ in needs_compiling) + sum(sum(s.duration.total_seconds() for s in ts.timeline) / 3600 for ts in stale_unsubmitted)
+                console.print(f"  [dim]{total_needing_compile} log(s),[/dim] [cyan]{total_hours:.1f}h[/cyan] [dim]total[/dim]")
 
-        # 4. PUSH - Check what needs submission
-        console.print("[bold]Timesheets to Push:[/bold]")
-        failed = ws.timesheets.find_failed_submissions()
-        unsubmitted = [ts for ts in existing_timesheets if ts.meta.submitted_at is None]
+            # Show blockers after (unclosed sessions)
+            if has_unclosed:
+                if total_needing_compile > 0:
+                    console.print()
+                console.print("  [red]Blocked.[/red] [dim]Run[/dim] [cyan]faff stop[/cyan] [dim]or[/dim] [cyan]faff log edit <date>[/cyan][dim]:[/dim]")
+                for log_date, hours, audience_ids in has_unclosed:
+                    console.print(f"  {log_date} · [cyan]{hours:>4.1f}h[/cyan]")
 
-        # Exclude stale unsubmitted from the push list (they need recompiling first)
-        stale_dates = {(ts.meta.audience_id, ts.date) for ts in stale_unsubmitted}
-        unsubmitted_ready = [ts for ts in unsubmitted if (ts.meta.audience_id, ts.date) not in stale_dates]
+            # If nothing to compile and no blockers
+            if total_needing_compile == 0 and not has_unclosed:
+                console.print("  [dim]✓ All logs compiled[/dim]")
 
-        # Show ready to push first
-        total_needing_push = len(unsubmitted_ready) + len(failed) + len(stale_submitted)
-        if total_needing_push > 0:
-            if unsubmitted_ready:
-                console.print(f"  [dim]Ready to Push. Run[/dim] [cyan]faff push[/cyan]:")
-                for ts in sorted(unsubmitted_ready, key=lambda t: t.date):
-                    hours = sum(s.duration.total_seconds() for s in ts.timeline) / 3600
-                    console.print(f"  {ts.date} · [cyan]{hours:>4.1f}h[/cyan] → {ts.meta.audience_id}")
+            console.print()
 
-            # Show failed submissions
-            if failed:
+            # 4. PUSH - Check what needs submission
+            console.print("[bold]Timesheets to Push:[/bold]")
+            failed = ws.timesheets.find_failed_submissions()
+            unsubmitted = [ts for ts in existing_timesheets if ts.meta.submitted_at is None]
+
+            # Exclude stale unsubmitted from the push list (they need recompiling first)
+            stale_dates = {(ts.meta.audience_id, ts.date) for ts in stale_unsubmitted}
+            unsubmitted_ready = [ts for ts in unsubmitted if (ts.meta.audience_id, ts.date) not in stale_dates]
+
+            # Show ready to push first
+            total_needing_push = len(unsubmitted_ready) + len(failed) + len(stale_submitted)
+            if total_needing_push > 0:
                 if unsubmitted_ready:
-                    console.print()
-                console.print("  [red]Failed.[/red] [dim]Fix errors and run[/dim] [cyan]faff push[/cyan]:")
-                for ts in sorted(failed, key=lambda t: t.date):
-                    hours = sum(s.duration.total_seconds() for s in ts.timeline) / 3600
-                    error = ts.meta.submission_error
-                    if len(error) > 50:
-                        error = error[:47] + "..."
-                    console.print(f"  {ts.date} · [cyan]{hours:>4.1f}h[/cyan] → {ts.meta.audience_id} [red]{error}[/red]")
+                    console.print(f"  [dim]Ready to Push. Run[/dim] [cyan]faff push[/cyan]:")
+                    for ts in sorted(unsubmitted_ready, key=lambda t: t.date):
+                        hours = sum(s.duration.total_seconds() for s in ts.timeline) / 3600
+                        console.print(f"  {ts.date} · [cyan]{hours:>4.1f}h[/cyan] → {ts.meta.audience_id}")
 
-            # Warn about submitted stale timesheets
-            if stale_submitted:
-                if unsubmitted_ready or failed:
-                    console.print()
-                console.print("  [yellow]Stale (already submitted).[/yellow] [dim]Manual review needed:[/dim]")
-                for ts in sorted(stale_submitted, key=lambda t: t.date):
-                    hours = sum(s.duration.total_seconds() for s in ts.timeline) / 3600
-                    submitted = ts.meta.submitted_at.strftime("%Y-%m-%d")
-                    console.print(f"  {ts.date} · [cyan]{hours:>4.1f}h[/cyan] ({ts.meta.audience_id}) [dim]submitted {submitted}[/dim]")
-        else:
-            console.print("  [dim]✓ All timesheets submitted[/dim]")
+                # Show failed submissions
+                if failed:
+                    if unsubmitted_ready:
+                        console.print()
+                    console.print("  [red]Failed.[/red] [dim]Fix errors and run[/dim] [cyan]faff push[/cyan]:")
+                    for ts in sorted(failed, key=lambda t: t.date):
+                        hours = sum(s.duration.total_seconds() for s in ts.timeline) / 3600
+                        error = ts.meta.submission_error
+                        if len(error) > 50:
+                            error = error[:47] + "..."
+                        console.print(f"  {ts.date} · [cyan]{hours:>4.1f}h[/cyan] → {ts.meta.audience_id} [red]{error}[/red]")
+
+                # Warn about submitted stale timesheets
+                if stale_submitted:
+                    if unsubmitted_ready or failed:
+                        console.print()
+                    console.print("  [yellow]Stale (already submitted).[/yellow] [dim]Manual review needed:[/dim]")
+                    for ts in sorted(stale_submitted, key=lambda t: t.date):
+                        hours = sum(s.duration.total_seconds() for s in ts.timeline) / 3600
+                        submitted = ts.meta.submitted_at.strftime("%Y-%m-%d")
+                        console.print(f"  {ts.date} · [cyan]{hours:>4.1f}h[/cyan] ({ts.meta.audience_id}) [dim]submitted {submitted}[/dim]")
+            else:
+                console.print("  [dim]✓ All timesheets submitted[/dim]")
 
     except Exception as e:
         typer.echo(f"Error getting status: {e}", err=True)

@@ -41,45 +41,96 @@ def nicer_tracker(strings: Sequence[str], ws: Workspace) -> list[str | FuzzyItem
         for s in strings
     ]
 
+def print_sentence(role=None, action=None, objective=None, subject=None):
+    """Print the intent sentence with filled/unfilled parts."""
+    role_str = f"[bold cyan]{prettify_path_label(role)}[/bold cyan]" if role else "[dim]________[/dim]"
+    action_str = f"[bold cyan]{prettify_path_label(action)}[/bold cyan]" if action else "[dim]________[/dim]"
+    objective_str = f"[bold cyan]{prettify_path_label(objective)}[/bold cyan]" if objective else "[dim]________[/dim]"
+    subject_str = f"[bold cyan]{prettify_path_label(subject)}[/bold cyan]" if subject else "[dim]________[/dim]"
+
+    from rich.console import Console
+    console = Console()
+
+    sentence = f"  [dim]→[/dim] As a {role_str}, I am {action_str} to achieve {objective_str}, focused on {subject_str}."
+    console.print(f"\n{sentence}\n")
+
 def input_new_intent(alias: str, ws: Workspace) -> Intent:
     """
     Prompt the user for details to create a new intent.
     """
+    from rich.console import Console
+    console = Console()
     date = ws.today()
 
-    role = fuzzy_select(
-        "What job role are you playing in this activity?",
+    console.print()
+    console.print("[bold green]✓[/bold green] Great! Now, let's capture the details.", style="bold")
+    console.print("[dim]Complete this sentence to describe what you're doing:[/dim]")
+    print_sentence()
+
+    console.print("[bold]What role are you performing here?[/bold]")
+    console.print("[dim]e.g. Line Manager, Pre-Sales Engineer, Parent[/dim]")
+    role, _ = fuzzy_select(
+        "Role:",
         nicer([x for x in ws.plans.get_roles(date)]),
         escapable=True
     )
-    objective = fuzzy_select(
-        "What is the main goal of this activity?",
+    print_sentence(role=role.value if role else None)
+
+    console.print("[bold]What action are you doing?[/bold]")
+    console.print("[dim]e.g. Planning, Attending a Scheduled Meeting[/dim]")
+    action, _ = fuzzy_select(
+        "Action:",
+         nicer([x for x in ws.plans.get_actions(date)]),
+         escapable=True
+    )
+    print_sentence(role=role.value if role else None, action=action.value if action else None)
+
+    console.print("[bold]What outcome are you aiming for?[/bold]")
+    console.print("[dim]e.g. Career Development, New Revenue New Business[/dim]")
+    objective, _ = fuzzy_select(
+        "Outcome:",
         nicer([x for x in ws.plans.get_objectives(date)]),
         escapable=True
     )
-    action = fuzzy_select(
-        "What action are you doing?",
-         nicer([x for x in ws.plans.get_actions(date)]),
-         escapable=True
-)
-    subject = fuzzy_select(
-        "Who or what is this for or about?",
+    print_sentence(role=role.value if role else None, action=action.value if action else None, objective=objective.value if objective else None)
+
+    console.print("[bold]Who or what are you focused on here?[/bold]")
+    console.print("[dim]e.g. John Smith, ACME Corporation, Sales Department[/dim]")
+    subject, _ = fuzzy_select(
+        "Focus:",
         nicer([x for x in ws.plans.get_subjects(date)]),
         escapable=True
     )
+    print_sentence(role=role.value if role else None, action=action.value if action else None, objective=objective.value if objective else None, subject=subject.value if subject else None)
 
     trackers: List[str] = []
-    ingesting_trackers = True
+    all_trackers = list(ws.plans.get_trackers(date))
 
-    while ingesting_trackers:
-        tracker_id = fuzzy_select(
-            prompt="Please add any third-party trackers to attach (esc to finish):",
-            choices = nicer_tracker([x for x in ws.plans.get_trackers(date) if x not in trackers], ws)
-        )
-        if tracker_id:
-            trackers.append(tracker_id.value)
-        else:
-            ingesting_trackers = False
+    # Only show tracker selection if there are trackers available
+    if all_trackers:
+        ingesting_trackers = True
+
+        console.print("[bold]Add remote trackers?[/bold]")
+        console.print("[dim]Select trackers or press Enter on empty line to finish.[/dim]")
+
+        while ingesting_trackers:
+            remaining = [x for x in all_trackers if x not in trackers]
+            if not remaining:
+                break
+
+            # Add a "Done" option at the top
+            choices = [FuzzyItem(name="[Done]", value=None, decoration="")] + nicer_tracker(remaining, ws)
+
+            tracker_id, _ = fuzzy_select(
+                prompt="Tracker:",
+                choices=choices,
+                escapable=True,
+                create_new=False
+            )
+            if tracker_id and tracker_id.value:
+                trackers.append(tracker_id.value)
+            else:
+                ingesting_trackers = False
 
     local_plan = ws.plans.get_local_plan_or_create(date)
 
@@ -97,6 +148,12 @@ def input_new_intent(alias: str, ws: Workspace) -> Intent:
 
     # Get the intent back from the plan - it now has a generated ID
     intent_with_id = [i for i in new_plan.intents if i.alias == alias][-1]
+
+    # Show final success message with complete intent
+    console.print()
+    console.print("[bold green]✓[/bold green] Intent created!", style="bold")
+    print_sentence(role=role.value if role else None, action=action.value if action else None, objective=objective.value if objective else None, subject=subject.value if subject else None)
+
     return intent_with_id   
 
 @app.callback(invoke_without_command=True)
@@ -133,8 +190,15 @@ def start(
 
         existing_intents = ws.plans.get_intents(date)
 
-        chosen_intent = fuzzy_select(
-            prompt="What are you doing?",
+        from rich.console import Console
+        console = Console()
+        console.print()
+        console.print("[bold]What are you doing?[/bold]")
+        console.print("[dim]What would you call this activity if you were naming an entry in your calendar?[/dim]")
+        console.print()
+
+        chosen_intent, _ = fuzzy_select(
+            prompt="Activity:",
             choices=intents_to_choices(existing_intents),
             escapable=False,
             slugify_new=False,
@@ -148,8 +212,7 @@ def start(
             intent = input_new_intent(chosen_intent.value, ws)
         else:
             intent = chosen_intent.value
-
-        note = input("? Note (optional): ")
+        note = input("? Note for this session (optional): ")
 
         # Rust core handles validation (future time, overlaps) and auto-stops active session
         ws.logs.start_intent(intent, start_time, note if note else None)

@@ -657,7 +657,7 @@ def complete(
                 for intent in incomplete_intents
             ]
 
-            selected = fuzzy_select(
+            selected, _ = fuzzy_select(
                 "Which intent would you like to complete?",
                 choices,
                 escapable=True
@@ -692,7 +692,7 @@ def complete(
         updated_fields = {}
 
         if not original_intent.role:
-            role = fuzzy_select(
+            role, _ = fuzzy_select(
                 "What job role are you playing in this activity?",
                 nicer([x for x in ws.plans.get_roles(date)]),
                 escapable=True
@@ -704,7 +704,7 @@ def complete(
             typer.echo(f"  ✓ Role already set: {original_intent.role}")
 
         if not original_intent.objective:
-            objective = fuzzy_select(
+            objective, _ = fuzzy_select(
                 "What is the main goal of this activity?",
                 nicer([x for x in ws.plans.get_objectives(date)]),
                 escapable=True
@@ -716,7 +716,7 @@ def complete(
             typer.echo(f"  ✓ Objective already set: {original_intent.objective}")
 
         if not original_intent.action:
-            action = fuzzy_select(
+            action, _ = fuzzy_select(
                 "What action are you doing?",
                 nicer([x for x in ws.plans.get_actions(date)]),
                 escapable=True
@@ -728,7 +728,7 @@ def complete(
             typer.echo(f"  ✓ Action already set: {original_intent.action}")
 
         if not original_intent.subject:
-            subject = fuzzy_select(
+            subject, _ = fuzzy_select(
                 "Who or what is this for or about?",
                 nicer([x for x in ws.plans.get_subjects(date)]),
                 escapable=True

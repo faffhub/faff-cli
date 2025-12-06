@@ -60,7 +60,8 @@ def fuzzy_select(prompt: str,
                  create_new: bool = True,
                  max_fraction: float = 0.5,
                  escapable: bool = True,
-                 slugify_new: bool = True) -> FuzzyItem | None:
+                 slugify_new: bool = True,
+                 multi_select_key: bool = False) -> tuple[FuzzyItem | None, bool]:
 
     import shutil
     total = shutil.get_terminal_size().lines
@@ -94,19 +95,32 @@ def fuzzy_select(prompt: str,
     def _(event):
         if selected_idx < len(matches):
             val = matches[selected_idx]
-            # FIXME: This shouldn't match on the string. 
+            # FIXME: This shouldn't match on the string.
             # Actually, I think the signature here should be:
             # selected_item, new_string = app.run()
-            # and either selected_item or new_string should 
+            # and either selected_item or new_string should
             # actually would it be better if this thing _only_ handled strings?
-            event.app.exit(result=val)
+            event.app.exit(result=(val, False))  # False = don't continue
         else:
-            event.app.exit(result=None)
+            event.app.exit(result=(None, False))
+
+    @kb.add("tab")  # Tab to add and continue
+    def _(event):
+        if multi_select_key and selected_idx < len(matches):
+            val = matches[selected_idx]
+            event.app.exit(result=(val, True))  # True = continue selecting
+        else:
+            # If multi_select_key is disabled, treat like normal enter
+            if selected_idx < len(matches):
+                val = matches[selected_idx]
+                event.app.exit(result=(val, False))
+            else:
+                event.app.exit(result=(None, False))
 
     @kb.add("escape", eager=True)
     def _(event):
         if escapable:
-            event.app.exit(result=None)
+            event.app.exit(result=(None, False))
 
     @kb.add("c-c")
     def _(event):
@@ -208,11 +222,13 @@ def fuzzy_select(prompt: str,
     app.ttimeoutlen = 0.0001
     app.timeoutlen = 0.0001
 
-    selection = app.run()
+    result = app.run()
+    selection, continue_selecting = result
 
     if selection:
+        continue_marker = " <ansigreen>(+)</ansigreen>" if continue_selecting else ""
         print_formatted_text(
-            HTML(f"? {prompt} <ansiblue>{html.escape(selection.name)}</ansiblue>{' <ansimagenta>*NEW*</ansimagenta>' if selection and selection.is_new else ''}")
+            HTML(f"? {prompt} <ansiblue>{html.escape(selection.name)}</ansiblue>{' <ansimagenta>*NEW*</ansimagenta>' if selection and selection.is_new else ''}{continue_marker}")
         )
 
-    return selection
+    return selection, continue_selecting
