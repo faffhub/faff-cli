@@ -7,6 +7,7 @@ concern. The Rust library only needs to know how to discover and run plugins, no
 
 import subprocess
 import shutil
+import sys
 from pathlib import Path
 import typer
 from faff_core import Workspace
@@ -63,6 +64,77 @@ def install(
             raise typer.Exit(1)
 
         typer.echo(f"✓ Successfully installed plugin '{repo_name}' to {plugin_dir}")
+
+        # Check for and handle requirements.txt
+        requirements_path = plugin_dir / "requirements.txt"
+        if requirements_path.exists():
+            typer.echo(f"\nFound requirements.txt. Setting up isolated environment...")
+
+            # Create a venv for this plugin
+            plugin_venv = plugin_dir / ".venv"
+            try:
+                typer.echo(f"  Creating virtual environment at {plugin_venv}...")
+                subprocess.run(
+                    [sys.executable, "-m", "venv", str(plugin_venv)],
+                    check=True,
+                    capture_output=True,
+                    text=True
+                )
+
+                # Determine pip path in the new venv
+                if sys.platform == "win32":
+                    venv_pip = plugin_venv / "Scripts" / "pip"
+                else:
+                    venv_pip = plugin_venv / "bin" / "pip"
+
+                # Install requirements into the plugin's venv
+                typer.echo(f"  Installing dependencies...")
+                subprocess.run(
+                    [str(venv_pip), "install", "-r", str(requirements_path)],
+                    check=True,
+                    capture_output=True,
+                    text=True
+                )
+
+                # Find the plugin venv's site-packages directory
+                result = subprocess.run(
+                    [str(venv_pip), "show", "-f", "pip"],
+                    check=True,
+                    capture_output=True,
+                    text=True
+                )
+                # Parse the Location field from pip show output
+                plugin_site_packages = None
+                for line in result.stdout.split('\n'):
+                    if line.startswith('Location:'):
+                        plugin_site_packages = Path(line.split(':', 1)[1].strip())
+                        break
+
+                if not plugin_site_packages:
+                    raise RuntimeError("Could not determine plugin venv site-packages directory")
+
+                # Find the main venv's site-packages directory
+                main_site_packages = Path(sys.executable).parent.parent / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages"
+                if not main_site_packages.exists():
+                    # Alternative location for some systems
+                    main_site_packages = Path(sys.executable).parent.parent / "lib" / "site-packages"
+
+                if not main_site_packages.exists():
+                    raise RuntimeError(f"Could not find main venv site-packages directory at {main_site_packages}")
+
+                # Create a .pth file in the main venv pointing to plugin's site-packages
+                pth_file = main_site_packages / f"faff-plugin-{repo_name}.pth"
+                pth_file.write_text(str(plugin_site_packages) + "\n")
+
+                typer.echo(f"✓ Created isolated environment and installed dependencies")
+                typer.echo(f"  Site-packages linked via: {pth_file.name}")
+
+            except subprocess.CalledProcessError as e:
+                typer.echo(f"Error setting up plugin environment: {e.stderr}", err=True)
+                typer.echo(f"You may need to manually install dependencies.", err=True)
+            except Exception as e:
+                typer.echo(f"Error setting up plugin environment: {e}", err=True)
+                typer.echo(f"You may need to manually install dependencies.", err=True)
 
         # Check if there's a config template
         template_path = plugin_dir / "config.template.toml"
@@ -163,6 +235,74 @@ def update(
         typer.echo(result.stdout)
         typer.echo(f"✓ Successfully updated plugin '{plugin_name}'")
 
+        # Check if plugin needs venv setup (new or updated requirements.txt)
+        requirements_path = plugin_dir / "requirements.txt"
+        plugin_venv = plugin_dir / ".venv"
+
+        if requirements_path.exists() and not plugin_venv.exists():
+            typer.echo(f"\nFound requirements.txt. Setting up isolated environment...")
+
+            try:
+                # Create a venv for this plugin
+                typer.echo(f"  Creating virtual environment at {plugin_venv}...")
+                subprocess.run(
+                    [sys.executable, "-m", "venv", str(plugin_venv)],
+                    check=True,
+                    capture_output=True,
+                    text=True
+                )
+
+                # Determine pip path in the new venv
+                if sys.platform == "win32":
+                    venv_pip = plugin_venv / "Scripts" / "pip"
+                else:
+                    venv_pip = plugin_venv / "bin" / "pip"
+
+                # Install requirements into the plugin's venv
+                typer.echo(f"  Installing dependencies...")
+                subprocess.run(
+                    [str(venv_pip), "install", "-r", str(requirements_path)],
+                    check=True,
+                    capture_output=True,
+                    text=True
+                )
+
+                # Find the plugin venv's site-packages directory
+                result = subprocess.run(
+                    [str(venv_pip), "show", "-f", "pip"],
+                    check=True,
+                    capture_output=True,
+                    text=True
+                )
+                plugin_site_packages = None
+                for line in result.stdout.split('\n'):
+                    if line.startswith('Location:'):
+                        plugin_site_packages = Path(line.split(':', 1)[1].strip())
+                        break
+
+                if not plugin_site_packages:
+                    raise RuntimeError("Could not determine plugin venv site-packages directory")
+
+                # Find the main venv's site-packages directory
+                main_site_packages = Path(sys.executable).parent.parent / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages"
+                if not main_site_packages.exists():
+                    main_site_packages = Path(sys.executable).parent.parent / "lib" / "site-packages"
+
+                if not main_site_packages.exists():
+                    raise RuntimeError(f"Could not find main venv site-packages directory at {main_site_packages}")
+
+                # Create a .pth file in the main venv pointing to plugin's site-packages
+                pth_file = main_site_packages / f"faff-plugin-{plugin_name}.pth"
+                pth_file.write_text(str(plugin_site_packages) + "\n")
+
+                typer.echo(f"✓ Created isolated environment and installed dependencies")
+                typer.echo(f"  Site-packages linked via: {pth_file.name}")
+
+            except subprocess.CalledProcessError as e:
+                typer.echo(f"Error setting up plugin environment: {e.stderr}", err=True)
+            except Exception as e:
+                typer.echo(f"Error setting up plugin environment: {e}", err=True)
+
     except subprocess.CalledProcessError as e:
         typer.echo(f"Error updating plugin: {e.stderr}", err=True)
         raise typer.Exit(1)
@@ -203,8 +343,116 @@ def uninstall(
     # Remove the plugin directory
     shutil.rmtree(plugin_dir)
 
+    # Clean up .pth file if it exists
+    main_site_packages = Path(sys.executable).parent.parent / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages"
+    if not main_site_packages.exists():
+        main_site_packages = Path(sys.executable).parent.parent / "lib" / "site-packages"
+
+    pth_file = main_site_packages / f"faff-plugin-{plugin_name}.pth"
+    if pth_file.exists():
+        pth_file.unlink()
+        typer.echo(f"✓ Removed site-packages link: {pth_file.name}")
+
     typer.echo(f"✓ Uninstalled plugin '{plugin_name}'")
 
     if instances:
         typer.echo("\nNote: Instance configs still exist in .faff/remotes/")
         typer.echo("You may want to remove them manually.")
+
+@app.command()
+def doctor(ctx: typer.Context):
+    """
+    Check the health of all installed plugins.
+
+    Diagnoses common issues like missing dependencies, broken venvs, or import errors.
+    """
+    ws: Workspace = ctx.obj
+    from rich.console import Console
+    console = Console()
+
+    plugins_dir = Path(ws.storage().base_dir()) / "plugins"
+
+    if not plugins_dir.exists():
+        console.print("[yellow]No plugins directory found.[/yellow]")
+        return
+
+    # Get all plugin directories
+    plugins = [p for p in plugins_dir.iterdir() if p.is_dir() and not p.name.startswith('.')]
+
+    if not plugins:
+        console.print("[yellow]No plugins installed.[/yellow]")
+        return
+
+    console.print("[bold]Plugin Health Check[/bold]\n")
+
+    # Find main venv site-packages
+    main_site_packages = Path(sys.executable).parent.parent / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages"
+    if not main_site_packages.exists():
+        main_site_packages = Path(sys.executable).parent.parent / "lib" / "site-packages"
+
+    for plugin_dir in sorted(plugins):
+        plugin_name = plugin_dir.name
+        console.print(f"[cyan]{plugin_name}[/cyan]")
+
+        issues = []
+        warnings = []
+
+        # Check plugin structure
+        has_plugin_dir = (plugin_dir / "plugin").exists() and (plugin_dir / "plugin").is_dir()
+        has_plugin_py = (plugin_dir / "plugin" / "plugin.py").exists()
+        has_requirements = (plugin_dir / "requirements.txt").exists()
+        has_venv = (plugin_dir / ".venv").exists()
+
+        if not has_plugin_dir:
+            issues.append("Missing plugin/ directory")
+        if not has_plugin_py:
+            issues.append("Missing plugin/plugin.py")
+
+        # Check dependency setup
+        if has_requirements:
+            if not has_venv:
+                issues.append("Has requirements.txt but no .venv (run 'faff plugin update' to fix)")
+            else:
+                # Check .pth file
+                pth_file = main_site_packages / f"faff-plugin-{plugin_name}.pth"
+                if not pth_file.exists():
+                    issues.append(f"Missing .pth file at {pth_file}")
+                else:
+                    # Verify .pth file points to correct location
+                    pth_content = pth_file.read_text().strip()
+                    expected_path = plugin_dir / ".venv" / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages"
+                    if pth_content != str(expected_path):
+                        warnings.append(f".pth file points to {pth_content} (may be outdated)")
+
+        # Try to import the plugin module
+        if has_plugin_py:
+            try:
+                # Try importing using importlib
+                import importlib.util
+                spec = importlib.util.spec_from_file_location(
+                    plugin_name,
+                    str(plugin_dir / "plugin" / "plugin.py")
+                )
+                if spec and spec.loader:
+                    module = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(module)
+                    console.print("  [green]✓[/green] Plugin imports successfully")
+            except ModuleNotFoundError as e:
+                issues.append(f"Import error: {e} (missing dependency?)")
+            except Exception as e:
+                issues.append(f"Import error: {e}")
+
+        # Report findings
+        if issues:
+            for issue in issues:
+                console.print(f"  [red]✗[/red] {issue}")
+        elif warnings:
+            for warning in warnings:
+                console.print(f"  [yellow]⚠[/yellow] {warning}")
+        else:
+            if not has_requirements:
+                console.print("  [green]✓[/green] Healthy (no dependencies)")
+            else:
+                console.print("  [green]✓[/green] Healthy")
+
+        console.print()
