@@ -121,16 +121,17 @@ def pull(
         # Filter to only plan sources
         plan_sources = [r for r in remotes if isinstance(r, PlanSource)]
 
-        if len(plan_sources) == 0:
-            typer.echo("No remote plan sources configured.\n", err=True)
-            typer.echo("Configure a remote plan source in your faff configuration.", err=True)
-            raise typer.Exit(1)
-
         if remote_id:
+            # Specific remote requested - filter and check if it exists
             plan_sources = [r for r in plan_sources if r.id == remote_id]
             if len(plan_sources) == 0:
                 typer.echo(f"Unknown remote: {remote_id}", err=True)
                 raise typer.Exit(1)
+        elif len(plan_sources) == 0:
+            # No remote specified and none configured - exit gracefully
+            typer.echo("No remote plan sources configured.")
+            typer.echo("Configure a remote plan source in your faff configuration.")
+            return  # Exit gracefully with code 0
 
         for remote_plugin in plan_sources:
             try:

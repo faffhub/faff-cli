@@ -160,7 +160,7 @@ class TestErrorHandling:
 
         # Should fail with error message
         assert result.exit_code == 1
-        assert "already initialized" in result.stdout
+        assert "already initialized" in result.output
 
 
 class TestDataPersistence:

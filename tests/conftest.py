@@ -27,6 +27,8 @@ def temp_faff_dir():
     (faff_dir / "plans").mkdir()
     (faff_dir / "timesheets").mkdir()
     (faff_dir / "identities").mkdir()
+    (faff_dir / "remotes").mkdir()
+    (faff_dir / "plugins").mkdir()
 
     # Create a minimal config.toml
     config_content = """timezone = "UTC"
